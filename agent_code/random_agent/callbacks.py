@@ -7,4 +7,5 @@ def setup(self):
 
 def act(agent, game_state: dict):
     agent.logger.info('Pick action at random')
+    print(game_state['bombs'])
     return np.random.choice(['RIGHT', 'LEFT', 'UP', 'DOWN', 'BOMB'], p=[.23, .23, .23, .23, .08])

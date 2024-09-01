@@ -3,3 +3,6 @@ scipy~=1.14.0
 scikit-learn~=1.5.1
 pygame~=2.6.0
 tqdm~=4.66.5
+torch~=2.4.0
+matplotlib~=3.9.2
+IPython~=8.27.0
