@@ -5,7 +5,8 @@ import settings as s
 
 
 def look_for_targets(free_space, start, targets, logger=None):
-    """Find direction of the closest target that can be reached via free tiles.
+    """
+    Find direction of the closest target that can be reached via free tiles.
 
     Performs a breadth-first search of the reachable free tiles until a target is encountered.
     If no target can be reached, the path that takes the agent closest to any target is chosen.
