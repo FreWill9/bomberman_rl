@@ -290,9 +290,9 @@ def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
     left = tile_value(game_state, (self_x, self_y - 1), coordinate_history)
     best_val = max(up, right, down, left)
     # convert to binary for which one is best
-    up = float(up == best_val)
-    right = float(right == best_val)
-    down = float(down == best_val)
+    up = float(up == best_val) - 0.0001
+    right = float(right == best_val) - 0.0002
+    down = float(down == best_val) - 0.0003
     left = float(left == best_val)
 
     # Todo: shortest ways
