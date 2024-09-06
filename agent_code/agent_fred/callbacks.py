@@ -68,15 +68,15 @@ def act(self, game_state: dict) -> str:
     state = state_to_features(game_state, self.coordinate_history)
 
     # todo Exploration vs exploitation
-    random_prob = .2
+    random_prob = 0.0
     rounds = game_state['round']
     match rounds:
         case rounds if rounds < 60:
-            random_prob = .5
+            random_prob = .2
         case rounds if 30 <= rounds < 200:
-            random_prob = .4
+            random_prob = .1
         case rounds if 60 <= rounds < 600:
-            random_prob = .3
+            random_prob = .05
     if self.train and random.random() < random_prob:
         self.logger.debug("Choosing action purely at random.")
         # 80%: walk in any direction. 10% wait. 10% bomb.
@@ -86,6 +86,7 @@ def act(self, game_state: dict) -> str:
 
     state0 = torch.tensor(state, dtype=torch.float)
     prediction = self.model(state0)
+
     move = torch.argmax(prediction).item()
 
     return ACTIONS[move]
@@ -101,34 +102,49 @@ def build_bomb_map(game_state: dict):
     return bomb_map
 
 
+def manhattan_dist(x1, y1, x2, y2):
+    return abs(x1 - x2) + abs(y1 - y2)
+
+
+def coin_dist_sum(game_state: dict, x, y):
+    coins = game_state['coins']
+    res = sum([2/(manhattan_dist(x, y, c[0], c[1] + 0.1)) for c in coins])
+    # normalize
+    return res / max(len(coins), 1)
+
+
 def tile_value(game_state: dict, coord: (int, int), coordinate_history: deque) -> float:
     bomb_map = build_bomb_map(game_state)
     explosion_map = game_state['explosion_map']
     bomb_coord = [xy for (xy, t) in game_state['bombs']]
     opp_coord = [xy for (n, s, b, xy) in game_state['others']]
-    temp = 0.0
+    value = 0.0
 
     match game_state['field'][coord[0], coord[1]]:
         case 0:
-            temp = 0.0
+            pass
         case -1:
-            temp = -0.45
+            return -1.0
         case 1:
-            temp = 0.5
-    if coordinate_history.count((coord[0], coord[1])) > 2:
-        temp = -0.4
+            return 0.0
     if (coord[0], coord[1]) in opp_coord:
-        temp = -0.5
-    if (coord[0], coord[1]) in game_state['coins']:
-        temp = 1.0
-    if bomb_map[coord[0], coord[1]] < 5:
-        temp = -0.9
+        return -1.0
+    if bomb_map[coord[0], coord[1]] <= 1:
+        return -1.0
     if explosion_map[coord[0], coord[1]] > 0:
-        temp = -1.0
+        return -1.0
     if (coord[0], coord[1]) in bomb_coord:
-        temp = -1.0
+        return -1.0
+    if (coord[0], coord[1]) in game_state['coins']:
+        return 1.0
+    if coordinate_history.count((coord[0], coord[1])) > 2:
+        value -= 0.3
+    if bomb_map[coord[0], coord[1]] < 5:
+        value -= 0.9
 
-    return temp
+    value += coin_dist_sum(game_state, coord[0], coord[1])
+
+    return value
 
 
 def look_for_targets(free_space, start, targets, logger=None):
@@ -307,6 +323,7 @@ def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
                               score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
                               x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
                               in_danger, placement, up, right, down, left, shortest_way_coin])
+    rest_features = np.array([up, right, down, left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
     return rest_features
@@ -346,7 +363,7 @@ class QTrainer:
             next_state = torch.unsqueeze(next_state, 0)
             action = torch.unsqueeze(action, 0)
             reward = torch.unsqueeze(reward, 0)
-            done = (done, )
+            done = (done,)
 
         # 1: predicted Q values with current state
         pred = self.model(state)

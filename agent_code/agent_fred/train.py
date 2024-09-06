@@ -4,7 +4,7 @@ import pickle
 from typing import List
 
 import events as e
-from .callbacks import state_to_features, Linear_QNet, QTrainer
+from .callbacks import state_to_features, Linear_QNet, QTrainer, coin_dist_sum
 
 import torch
 import torch.nn as nn
@@ -46,6 +46,9 @@ NO_LOOP_SCORE = "NO_LOOP_SCORE"
 HIGH_SCORING_GAME = "HIGH_SCORING_GAME"
 PERFECT_COIN_HEAVEN = "PERFECT_COIN_HEAVEN"
 LOW_SCORING_GAME = "LOW_SCORING_GAME"
+MOVED_TO_COIN = "MOVED_TO_COIN"
+MOVED_AWAY_FROM_COIN = "MOVED_AWAY_FROM_COIN"
+MOVED_BACK = "MOVED_BACK"
 
 
 def setup_training(self):
@@ -67,7 +70,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.model = Linear_QNet(25, 64, 64, 6).to(device)
+    self.model = Linear_QNet(4, 8, 8, 6).to(device)
     self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
 
@@ -104,6 +107,16 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(LOOP)
     else:
         events.append(NO_LOOP)
+
+    # Agent should not move back and forth between two tiles
+    if (len(self.coordinate_history) >= 2
+            and self.coordinate_history[-2] == (state_new['self'][3][0], state_new['self'][3][1])):
+        events.append(MOVED_BACK)
+
+    # If tile value increases, agent is moving towards coin
+    if (coin_dist_sum(state_old, state_old['self'][3][0], state_old['self'][3][1])
+            < coin_dist_sum(state_new, state_new['self'][3][0], state_new['self'][3][1])):
+        events.append(MOVED_TO_COIN)
 
     # Todo: Reward for taking the shortest path to the next coin
 
@@ -180,21 +193,24 @@ def reward_from_events(self, events: List[str], score) -> int:
     certain behavior.
     """
     game_rewards = {
-        e.COIN_COLLECTED: +5,
+        e.COIN_COLLECTED: +10,
         e.MOVED_UP: +0,
         e.MOVED_RIGHT: +0,
         e.MOVED_DOWN: +0,
         e.MOVED_LEFT: +0,
-        e.KILLED_SELF: -20,
-        e.INVALID_ACTION: -5,
-        e.WAITED: -3,
-        e.SURVIVED_ROUND: +1,
+        e.KILLED_SELF: -50,
+        e.INVALID_ACTION: -10,
+        e.WAITED: -1,
+        e.SURVIVED_ROUND: +0,
+        e.GOT_KILLED: -100,
         NOT_WAITED: +0,
         LOOP: -5,
         NO_LOOP: +1,
         HIGH_SCORING_GAME: +50,
         PERFECT_COIN_HEAVEN: + 500,
         LOW_SCORING_GAME: -20,
+        MOVED_TO_COIN: +3,
+        MOVED_BACK: -2,
         # e.KILLED_OPPONENT: -5
     }
     reward_sum = score // 10
