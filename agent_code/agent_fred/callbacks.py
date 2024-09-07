@@ -17,6 +17,8 @@ import pdb
 
 from random import shuffle
 
+import math
+
 # if GPU is to be used
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
@@ -24,6 +26,10 @@ device = torch.device(
     "cpu")
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
+
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 100
 
 
 def setup(self):
@@ -42,6 +48,9 @@ def setup(self):
     """
 
     self.coordinate_history = deque([], 20)
+    self.shortest_way_coin = "No More Coins"
+    self.shortest_way_crate = "No More Crates"
+    self.counter = 0
 
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
@@ -63,24 +72,21 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
+
     self.coordinate_history.append((game_state['self'][3][0], game_state['self'][3][1]))
 
-    state = state_to_features(game_state, self.coordinate_history)
+    state = state_to_features(self, game_state, self.coordinate_history)
 
     # todo Exploration vs exploitation
-    random_prob = .2
-    rounds = game_state['round']
-    match rounds:
-        case rounds if rounds < 60:
-            random_prob = .5
-        case rounds if 30 <= rounds < 200:
-            random_prob = .4
-        case rounds if 60 <= rounds < 600:
-            random_prob = .3
-    if self.train and random.random() < random_prob:
-        self.logger.debug("Choosing action purely at random.")
+    rounds_done = game_state['round']
+    eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * rounds_done / EPS_DECAY)
+    sample = random.random()
+
+    if self.train and sample <= eps_threshold:
+        with torch.no_grad():
+            self.logger.debug(f"Choosing action purely at random. Prob: {eps_threshold}")
         # 80%: walk in any direction. 10% wait. 10% bomb.
-        return np.random.choice(ACTIONS, p=[.25, .25, .25, .25, .0, .0])
+        return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
 
     self.logger.debug("Querying model for action.")
 
@@ -184,7 +190,7 @@ def look_for_targets(free_space, start, targets, logger=None):
         current = parent_dict[current]
 
 
-def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
+def state_to_features(self, game_state: dict, coordinate_history: deque) -> np.array:
     """
     *This is not a required function, but an idea to structure your code.*
 
@@ -267,46 +273,84 @@ def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
     else:
         placement = -1
 
-    # Up, Right, Down, Left
+    # Up, Right, Down, Left, Touching_crate
+    touching_crate = False
     up = tile_value(game_state, (self_x - 1, self_y), coordinate_history)
     right = tile_value(game_state, (self_x, self_y + 1), coordinate_history)
     down = tile_value(game_state, (self_x + 1, self_y), coordinate_history)
     left = tile_value(game_state, (self_x, self_y - 1), coordinate_history)
+    if up == 0.5 or right == 0.5 or down == 0.5 or left == 0.5:
+        touching_crate = True
 
     # Todo: shortest ways
-    coins = game_state['coins']
     cols = range(1, arena.shape[0] - 1)
     rows = range(1, arena.shape[0] - 1)
-    targets = coins
+
+    coins = game_state['coins']
+    # dead_ends = [(x, y) for x in cols for y in rows if (arena[x, y] == 0)
+    #              and ([arena[x + 1, y], arena[x - 1, y], arena[x, y + 1], arena[x, y - 1]].count(0) == 1)]
+    crates = [(x, y) for x in cols for y in rows if (arena[x, y] == 1)]
+    free_coins = coins
+    free_crates = crates
     free_space = arena == 0
 
     # Exclude targets that are currently occupied by a bomb
     bombs = game_state['bombs']
     bomb_xys = [xy for (xy, t) in bombs]
-    targets = [target for target in targets if target not in bomb_xys]
+    free_coins = [coin for coin in free_coins if coin not in bomb_xys]
+    free_crates = [crate for crate in free_crates if crate not in bomb_xys]
 
     # Exclude free tiles that are occupied by others
     others = [xy for (n, s, b, xy) in game_state['others']]
     for o in others:
         free_space[o] = False
 
-    d = look_for_targets(free_space, (self_x, self_y), targets)
-    shortest_way_coin = 0.0
-    if d == (self_x - 1, self_y):
-        shortest_way_coin = 0.5
-    if d == (self_x + 1, self_y):
-        shortest_way_coin = -0.5
-    if d == (self_x, self_y - 1):
-        shortest_way_coin = -1.0
-    if d == (self_x, self_y + 1):
-        shortest_way_coin = 1
+    dir_coin = look_for_targets(free_space, (self_x, self_y), free_coins)
+    shortest_way_coin_up = 0.0
+    shortest_way_coin_right = 0.0
+    shortest_way_coin_down = 0.0
+    shortest_way_coin_left = 0.0
+    if dir_coin == (self_x - 1, self_y):
+        shortest_way_coin_up = 1.0
+        self.shortest_way_coin = "UP"
+    if dir_coin == (self_x + 1, self_y):
+        shortest_way_coin_down = 1.0
+        self.shortest_way_coin = "DOWN"
+    if dir_coin == (self_x, self_y - 1):
+        shortest_way_coin_left = 1.0
+        self.shortest_way_coin = "LEFT"
+    if dir_coin == (self_x, self_y + 1):
+        shortest_way_coin_right = 1.0
+        self.shortest_way_coin = "RIGHT"
+
+    dir_crate = look_for_targets(free_space, (self_x, self_y), free_crates)
+    shortest_way_crate_up = 0.0
+    shortest_way_crate_right = 0.0
+    shortest_way_crate_down = 0.0
+    shortest_way_crate_left = 0.0
+    if dir_crate == (self_x - 1, self_y):
+        shortest_way_crate_up = 1.0
+        self.shortest_way_crate = "UP"
+    if dir_coin == (self_x + 1, self_y):
+        shortest_way_crate_down = 1.0
+        self.shortest_way_crate = "DOWN"
+    if dir_coin == (self_x, self_y - 1):
+        shortest_way_crate_left = 1.0
+        self.shortest_way_crate = "LEFT"
+    if dir_coin == (self_x, self_y + 1):
+        shortest_way_crate_right = 1.0
+        self.shortest_way_crate = "RIGHT"
 
     # Build feature vector
     flat_arena = arena.flatten()
     rest_features = np.array([step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
                               score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
                               x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
-                              in_danger, placement, up, right, down, left, shortest_way_coin])
+                              in_danger, placement, up, right, down, left, touching_crate,
+                              shortest_way_coin_up, shortest_way_coin_right,
+                              shortest_way_coin_down, shortest_way_coin_left,
+                              shortest_way_crate_up, shortest_way_crate_right,
+                              shortest_way_crate_down, shortest_way_crate_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
     return rest_features
@@ -346,7 +390,7 @@ class QTrainer:
             next_state = torch.unsqueeze(next_state, 0)
             action = torch.unsqueeze(action, 0)
             reward = torch.unsqueeze(reward, 0)
-            done = (done, )
+            done = (done,)
 
         # 1: predicted Q values with current state
         pred = self.model(state)

@@ -7,34 +7,34 @@ experiment_state = {'round': 1,
 
                     'step': 9,
 
-                    'field': np.array([[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
-                                       [-1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, -1],
-                                       [-1, 0, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 0, -1],
-                                       [-1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, -1],
-                                       [-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1],
-                                       [-1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, -1],
-                                       [-1, 0, -1, 1, -1, 0, -1, 0, -1, 0, -1, 1, -1, 1, -1, 1, -1],
-                                       [-1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, -1],
-                                       [-1, 1, -1, 1, -1, 0, -1, 1, -1, 1, -1, 1, -1, 1, -1, 0, -1],
-                                       [-1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, -1],
-                                       [-1, 1, -1, 1, -1, 0, -1, 1, -1, 0, -1, 1, -1, 0, -1, 1, -1],
-                                       [-1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, -1],
-                                       [-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 0, -1, 1, -1],
-                                       [-1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, -1],
-                                       [-1, 0, -1, 1, -1, 0, -1, 1, -1, 1, -1, 0, -1, 1, -1, 0, -1],
-                                       [-1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, -1],
-                                       [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
+                    'field': np.array(
+                        [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
 
-                    'self': ('random_agent', 23, True, (np.int64(1), np.int64(1))),
+                    'self': ('random_agent', 23, True, (np.int64(1), np.int64(2))),
 
                     'others': [('peaceful_agent', 3, True, (np.int64(2), np.int64(15))),
-                               ('coin_collector_agent', 9, False, (np.int64(1), np.int64(1)))],
+                               ('coin_collector_agent', 9, False, (np.int64(15), np.int64(15)))],
 
                     'bombs': [((np.int64(11), np.int64(14)), 1),
                               ((np.int64(15), np.int64(15)), 2)],
 
-                    'coins': [(np.int64(2), np.int64(1)),
-                              (np.int64(3), np.int64(9))],
+                    'coins': [(np.int64(1), np.int64(1))],
 
                     'user_input': None,
 
@@ -262,22 +262,33 @@ def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
         free_space[o] = False
 
     d = look_for_targets(free_space, (self_x, self_y), targets)
-    shortest_way_coin = 0.0
+    shortest_way_coin_up = 0.0
+    shortest_way_coin_right = 0.0
+    shortest_way_coin_down = 0.0
+    shortest_way_coin_left = 0.0
+    shortest_way_coin = "No Coin"
     if d == (self_x - 1, self_y):
-        shortest_way_coin = 0.5
+        shortest_way_coin_up = 1.0
+        shortest_way_coin = "UP"
     if d == (self_x + 1, self_y):
-        shortest_way_coin = -0.5
+        shortest_way_coin_down = 1.0
+        shortest_way_coin = "DOWN"
     if d == (self_x, self_y - 1):
-        shortest_way_coin = -1.0
+        shortest_way_coin_left = 1.0
+        shortest_way_coin = "LEFT"
     if d == (self_x, self_y + 1):
-        shortest_way_coin = 1
+        shortest_way_coin_right = 1.0
+        shortest_way_coin = "RIGHT"
+
+    print(shortest_way_coin_up, shortest_way_coin_right, shortest_way_coin_down, shortest_way_coin_left, shortest_way_coin)
 
     # Build feature vector
     flat_arena = arena.flatten()
     rest_features = np.array([step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
                               score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
                               x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
-                              in_danger, placement, up, right, down, left, shortest_way_coin])
+                              in_danger, placement, up, right, down, left,
+                              shortest_way_coin_up, shortest_way_coin_right, shortest_way_coin_down, shortest_way_coin_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
     return rest_features

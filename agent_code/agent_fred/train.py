@@ -39,13 +39,21 @@ total_score = 0
 
 # Events
 NOT_WAITED = "NOT_WAITED"
+
 NO_COIN_FOR_X_MOVES = "NO_COIN_FOR_X_MOVES"
+
 LOOP = "LOOP"
 NO_LOOP = "NO_LOOP"
 NO_LOOP_SCORE = "NO_LOOP_SCORE"
+
 HIGH_SCORING_GAME = "HIGH_SCORING_GAME"
 PERFECT_COIN_HEAVEN = "PERFECT_COIN_HEAVEN"
 LOW_SCORING_GAME = "LOW_SCORING_GAME"
+
+SHORTEST_WAY_COIN = "SHORTEST_WAY_COIN"
+NOT_SHORTEST_WAY_COIN = "NOT_SHORTEST_WAY_COIN"
+SHORTEST_WAY_CRATE = "SHORTEST_WAY_CRATE"
+NOT_SHORTEST_WAY_CRATE = "NOT_SHORTEST_WAY_CRATE"
 
 
 def setup_training(self):
@@ -67,7 +75,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.model = Linear_QNet(25, 64, 64, 6).to(device)
+    self.model = Linear_QNet(33, 64, 64, 6).to(device)
     self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
 
@@ -93,26 +101,50 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     state_old = old_game_state
     action = encode_action(self_action)
     state_new = new_game_state
-    rewards = reward_from_events(self, events, state_new['self'][1])
 
-    # Idea: Add your own events to hand out rewards
+    # Custom events to hand out rewards:
+    # Agent did not wait
     if 'WAIT' not in events:
         events.append(NOT_WAITED)
 
     # If agent has been in the same location three times recently, it's a loop
-    if self.coordinate_history.count((state_new['self'][3][0], state_new['self'][3][1])) >= 2:
+    if self.coordinate_history.count((state_new['self'][3][0], state_new['self'][3][1])) > 2:
         events.append(LOOP)
     else:
         events.append(NO_LOOP)
 
-    # Todo: Reward for taking the shortest path to the next coin
+    # Taking the shortest path to the next coin
+    shortest_way_coin = self.shortest_way_coin
+    # Transpose shortest_way_coin to match gui
+    transpose_action(shortest_way_coin)
+
+    if shortest_way_coin == "No More Coins":
+        pass
+    elif self_action == shortest_way_coin:
+        events.append(SHORTEST_WAY_COIN)
+    else:
+        events.append(NOT_SHORTEST_WAY_COIN)
+
+    # Taking the shortest path to the next crate
+    shortest_way_crate = self.shortest_way_crate
+    # Transpose shortest_way_crate to match gui
+    transpose_action(shortest_way_crate)
+
+    if shortest_way_crate == "No More Crates":
+        pass
+    elif self_action == shortest_way_crate:
+        events.append(SHORTEST_WAY_CRATE)
+    else:
+        events.append(NOT_SHORTEST_WAY_CRATE)
+
+    rewards = reward_from_events(self, events, state_new['self'][1])
 
     # state_to_features is defined in callbacks.py
     # remember
-    self.memory.append(Memory(state_to_features(state_old, self.coordinate_history), action, rewards, state_to_features(state_new, self.coordinate_history), False))
+    self.memory.append(Memory(state_to_features(self, state_old, self.coordinate_history), action, rewards, state_to_features(self, state_new, self.coordinate_history), False))
 
     # train short memory
-    self.trainer.train_step(state_to_features(state_old, self.coordinate_history), action, rewards, state_to_features(state_new, self.coordinate_history), False)
+    self.trainer.train_step(state_to_features(self, state_old, self.coordinate_history), action, rewards, state_to_features(self, state_new, self.coordinate_history), False)
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -132,19 +164,21 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     state_old = last_game_state
     action = encode_action(last_action)
-    rewards = reward_from_events(self, events, state_old['self'][1])
 
+    # Add custom events here
     score = state_old['self'][1]
     if score < 40:
         events.append(LOW_SCORING_GAME)
     if score > 45:
         events.append(HIGH_SCORING_GAME)
-    if score == 50:
+    if score == 49:
         events.append(PERFECT_COIN_HEAVEN)
+
+    rewards = reward_from_events(self, events, state_old['self'][1])
 
     # remember Todo: last state passed twice as parameter because easier with train step... is this a problem?
     self.memory.append(
-        Memory(state_to_features(state_old, self.coordinate_history), action, rewards, state_to_features(state_old, self.coordinate_history), True))
+        Memory(state_to_features(self, state_old, self.coordinate_history), action, rewards, state_to_features(self, state_old, self.coordinate_history), True))
 
     # train long memory
     if len(self.memory) > BATCH_SIZE:
@@ -164,12 +198,14 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         pickle.dump(self.model, file)
 
     # plot results
+    '''
     self.plot_scores.append(score)
     self.total_score += score
     mean_score = self.total_score / self.n_games
     self.plot_mean_scores.append(mean_score)
     plt.ion()
     plot(self.plot_scores, self.plot_mean_scores)
+    '''
 
 
 def reward_from_events(self, events: List[str], score) -> int:
@@ -179,28 +215,47 @@ def reward_from_events(self, events: List[str], score) -> int:
     Here you can modify the rewards your agent gets to en/discourage
     certain behavior.
     """
-    game_rewards = {
+    # Stage 1 finished
+    game_rewards_stage_1 = {
         e.COIN_COLLECTED: +5,
-        e.MOVED_UP: +0,
-        e.MOVED_RIGHT: +0,
-        e.MOVED_DOWN: +0,
-        e.MOVED_LEFT: +0,
         e.KILLED_SELF: -20,
         e.INVALID_ACTION: -5,
         e.WAITED: -3,
         e.SURVIVED_ROUND: +1,
-        NOT_WAITED: +0,
         LOOP: -5,
         NO_LOOP: +1,
-        HIGH_SCORING_GAME: +50,
-        PERFECT_COIN_HEAVEN: + 500,
+        HIGH_SCORING_GAME: +20,
+        PERFECT_COIN_HEAVEN: + 100,
         LOW_SCORING_GAME: -20,
-        # e.KILLED_OPPONENT: -5
+        SHORTEST_WAY_COIN: +2,
+        NOT_SHORTEST_WAY_COIN: -3,
     }
+
+    # Stage 2
+    game_rewards_stage_2 = {
+        e.COIN_COLLECTED: +5,
+        e.KILLED_SELF: -70,
+        e.INVALID_ACTION: -5,
+        e.WAITED: 0,
+        e.SURVIVED_ROUND: +20,
+        e.BOMB_DROPPED: +2,
+        e.CRATE_DESTROYED: +10,
+        e.COIN_FOUND: +30,
+        e.BOMB_EXPLODED: +2,
+        LOOP: -3,
+        NO_LOOP: +1,
+        HIGH_SCORING_GAME: +20,
+        LOW_SCORING_GAME: -10,
+        SHORTEST_WAY_COIN: +2,
+        SHORTEST_WAY_CRATE: +2,
+        NOT_SHORTEST_WAY_COIN: -1,
+        NOT_SHORTEST_WAY_CRATE: -1
+    }
+
     reward_sum = score // 10
     for event in events:
-        if event in game_rewards:
-            reward_sum += game_rewards[event]
+        if event in game_rewards_stage_2:
+            reward_sum += game_rewards_stage_2[event]
     self.logger.info(f"Awarded {reward_sum} for events {', '.join(events)}")
     return reward_sum
 
@@ -219,6 +274,20 @@ def encode_action(action: str) -> float:
             return 4.0
         case 'BOMB':
             return 5.0
+
+
+def transpose_action(action: str) -> str:
+    match action:
+        case "UP":
+            return "LEFT"
+        case "RIGHT":
+            return "DOWN"
+        case "DOWN":
+            return "RIGHT"
+        case "LEFT":
+            return "UP"
+        case _:
+            return action
 
 
 def plot(scores, mean_scores):
