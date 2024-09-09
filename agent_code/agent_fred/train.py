@@ -204,13 +204,13 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.SURVIVED_ROUND: +0,
         e.GOT_KILLED: -100,
         NOT_WAITED: +0,
-        LOOP: -5,
-        NO_LOOP: +1,
+        LOOP: -2,
+        NO_LOOP: +2,
         HIGH_SCORING_GAME: +50,
         PERFECT_COIN_HEAVEN: + 500,
         LOW_SCORING_GAME: -20,
-        MOVED_TO_COIN: +3,
-        MOVED_BACK: -2,
+        MOVED_TO_COIN: +1,
+        MOVED_BACK: -1,
         # e.KILLED_OPPONENT: -5
     }
     reward_sum = score // 10
