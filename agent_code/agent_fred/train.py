@@ -1,18 +1,12 @@
 from collections import namedtuple, deque
-
 import pickle
 from typing import List
-
 import events as e
 from .callbacks import state_to_features, Linear_QNet, QTrainer
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 
 import random
-
 import matplotlib.pyplot as plt
 from IPython import display
 
@@ -22,22 +16,6 @@ device = torch.device(
     "mps" if torch.backends.mps.is_available() else
     "cpu")
 
-# This is only an example!
-Memory = namedtuple('Memory',
-                    ('state', 'action', 'reward', 'next_state', 'done'))
-
-# Hyperparameters -- DO modify
-# TRANSITION_HISTORY_SIZE = 3  # keep only ... last transitions
-# RECORD_ENEMY_TRANSITIONS = 1.0  # record enemy transitions with probability ...
-MAX_MEMORY = 10_000
-BATCH_SIZE = 64
-LR = 0.001
-
-plot_scores = []
-plot_mean_scores = []
-total_score = 0
-
-# Events
 NOT_WAITED = "NOT_WAITED"
 
 NO_COIN_FOR_X_MOVES = "NO_COIN_FOR_X_MOVES"
@@ -54,6 +32,23 @@ SHORTEST_WAY_COIN = "SHORTEST_WAY_COIN"
 NOT_SHORTEST_WAY_COIN = "NOT_SHORTEST_WAY_COIN"
 SHORTEST_WAY_CRATE = "SHORTEST_WAY_CRATE"
 NOT_SHORTEST_WAY_CRATE = "NOT_SHORTEST_WAY_CRATE"
+SHORTEST_WAY_SAFETY = "SHORTEST_WAY_SAFETY"
+NOT_SHORTEST_WAY_SAFETY = "NOT_SHORTEST_WAY_SAFETY"
+
+# This is only an example!
+Memory = namedtuple('Memory',
+                    ('state', 'action', 'reward', 'next_state', 'done'))
+
+# Hyperparameters -- DO modify
+# TRANSITION_HISTORY_SIZE = 3  # keep only ... last transitions
+# RECORD_ENEMY_TRANSITIONS = 1.0  # record enemy transitions with probability ...
+MAX_MEMORY = 10_000
+BATCH_SIZE = 64
+LR = 0.001
+
+plot_scores = []
+plot_mean_scores = []
+total_score = 0
 
 
 def setup_training(self):
@@ -75,7 +70,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.model = Linear_QNet(33, 64, 64, 6).to(device)
+    self.model = Linear_QNet(9, 64, 64, 6).to(device)
     self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
 
@@ -116,9 +111,9 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # Taking the shortest path to the next coin
     shortest_way_coin = self.shortest_way_coin
     # Transpose shortest_way_coin to match gui
-    transpose_action(shortest_way_coin)
+    shortest_way_coin = transpose_action(shortest_way_coin)
 
-    if shortest_way_coin == "No More Coins":
+    if shortest_way_coin == "No More Coins" or self.shortest_way_safety != 'Not In Danger':
         pass
     elif self_action == shortest_way_coin:
         events.append(SHORTEST_WAY_COIN)
@@ -128,14 +123,26 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # Taking the shortest path to the next crate
     shortest_way_crate = self.shortest_way_crate
     # Transpose shortest_way_crate to match gui
-    transpose_action(shortest_way_crate)
+    shortest_way_crate = transpose_action(shortest_way_crate)
 
-    if shortest_way_crate == "No More Crates":
+    if shortest_way_crate == "No More Crates" or self.shortest_way_safety != 'Not In Danger':
         pass
     elif self_action == shortest_way_crate:
         events.append(SHORTEST_WAY_CRATE)
     else:
         events.append(NOT_SHORTEST_WAY_CRATE)
+
+    # Taking the shortest path out of danger
+    shortest_way_safety = self.shortest_way_safety
+    # Transpose shortest_way_safety to match gui
+    shortest_way_safety = transpose_action(shortest_way_safety)
+
+    if shortest_way_safety == "Not In Danger":
+        pass
+    elif self_action == shortest_way_safety:
+        events.append(SHORTEST_WAY_SAFETY)
+    else:
+        events.append(NOT_SHORTEST_WAY_SAFETY)
 
     rewards = reward_from_events(self, events, state_new['self'][1])
 
@@ -198,14 +205,12 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         pickle.dump(self.model, file)
 
     # plot results
-    '''
     self.plot_scores.append(score)
     self.total_score += score
     mean_score = self.total_score / self.n_games
     self.plot_mean_scores.append(mean_score)
     plt.ion()
     plot(self.plot_scores, self.plot_mean_scores)
-    '''
 
 
 def reward_from_events(self, events: List[str], score) -> int:
@@ -217,77 +222,49 @@ def reward_from_events(self, events: List[str], score) -> int:
     """
     # Stage 1 finished
     game_rewards_stage_1 = {
-        e.COIN_COLLECTED: +5,
-        e.KILLED_SELF: -20,
-        e.INVALID_ACTION: -5,
-        e.WAITED: -3,
-        e.SURVIVED_ROUND: +1,
-        LOOP: -5,
+        e.COIN_COLLECTED: +4,
+        e.KILLED_SELF: -2,
+        e.INVALID_ACTION: -3,
+        e.WAITED: -2,
+        e.SURVIVED_ROUND: +10,
+        e.BOMB_DROPPED: -1,
+        LOOP: -3,
         NO_LOOP: +1,
-        HIGH_SCORING_GAME: +20,
-        PERFECT_COIN_HEAVEN: + 100,
-        LOW_SCORING_GAME: -20,
-        SHORTEST_WAY_COIN: +2,
+        HIGH_SCORING_GAME: +10,
+        PERFECT_COIN_HEAVEN: +20,
+        LOW_SCORING_GAME: -0,
+        SHORTEST_WAY_COIN: +5,
         NOT_SHORTEST_WAY_COIN: -3,
+        SHORTEST_WAY_SAFETY: +7,
+        NOT_SHORTEST_WAY_SAFETY: -6
     }
 
     # Stage 2
     game_rewards_stage_2 = {
-        e.COIN_COLLECTED: +5,
-        e.KILLED_SELF: -70,
-        e.INVALID_ACTION: -5,
+        e.COIN_COLLECTED: +1,
+        e.KILLED_SELF: -1,
+        e.INVALID_ACTION: -1,
         e.WAITED: 0,
         e.SURVIVED_ROUND: +20,
-        e.BOMB_DROPPED: +2,
+        e.BOMB_DROPPED: -1,
         e.CRATE_DESTROYED: +10,
         e.COIN_FOUND: +30,
-        e.BOMB_EXPLODED: +2,
+        e.BOMB_EXPLODED: +0,
         LOOP: -3,
         NO_LOOP: +1,
         HIGH_SCORING_GAME: +20,
-        LOW_SCORING_GAME: -10,
         SHORTEST_WAY_COIN: +2,
         SHORTEST_WAY_CRATE: +2,
         NOT_SHORTEST_WAY_COIN: -1,
         NOT_SHORTEST_WAY_CRATE: -1
     }
 
-    reward_sum = score // 10
+    reward_sum = self.steps / 40
     for event in events:
-        if event in game_rewards_stage_2:
-            reward_sum += game_rewards_stage_2[event]
+        if event in game_rewards_stage_1:
+            reward_sum += game_rewards_stage_1[event]
     self.logger.info(f"Awarded {reward_sum} for events {', '.join(events)}")
     return reward_sum
-
-
-def encode_action(action: str) -> float:
-    match action:
-        case 'UP':
-            return 0.0
-        case 'RIGHT':
-            return 1.0
-        case 'DOWN':
-            return 2.0
-        case 'LEFT':
-            return 3.0
-        case 'WAIT':
-            return 4.0
-        case 'BOMB':
-            return 5.0
-
-
-def transpose_action(action: str) -> str:
-    match action:
-        case "UP":
-            return "LEFT"
-        case "RIGHT":
-            return "DOWN"
-        case "DOWN":
-            return "RIGHT"
-        case "LEFT":
-            return "UP"
-        case _:
-            return action
 
 
 def plot(scores, mean_scores):
@@ -304,3 +281,33 @@ def plot(scores, mean_scores):
     plt.text(len(mean_scores)-1, mean_scores[-1], str(mean_scores[-1]))
     plt.show(block=False)
     plt.pause(.1)
+
+
+def transpose_action(action: str) -> str:
+    match action:
+        case "UP":
+            return "LEFT"
+        case "RIGHT":
+            return "DOWN"
+        case "DOWN":
+            return "RIGHT"
+        case "LEFT":
+            return "UP"
+        case _:
+            return action
+
+
+def encode_action(action: str) -> float:
+    match action:
+        case 'UP':
+            return 0.0
+        case 'RIGHT':
+            return 1.0
+        case 'DOWN':
+            return 2.0
+        case 'LEFT':
+            return 3.0
+        case 'WAIT':
+            return 4.0
+        case 'BOMB':
+            return 5.0

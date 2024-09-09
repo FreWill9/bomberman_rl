@@ -2,7 +2,6 @@ import os
 import pickle
 import random
 from collections import deque
-
 import numpy as np
 
 import torch
@@ -12,11 +11,8 @@ import torch.nn.functional as F
 
 import matplotlib
 import matplotlib.pyplot as plt
-
 import pdb
-
 from random import shuffle
-
 import math
 
 # if GPU is to be used
@@ -29,7 +25,7 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 100
+EPS_DECAY = 600
 
 
 def setup(self):
@@ -50,6 +46,8 @@ def setup(self):
     self.coordinate_history = deque([], 20)
     self.shortest_way_coin = "No More Coins"
     self.shortest_way_crate = "No More Crates"
+    self.shortest_way_safety = "Not In Danger"
+    self.steps = 0
     self.counter = 0
 
     if not os.path.isfile("my-saved-model.pt"):
@@ -64,6 +62,9 @@ def setup(self):
 
 
 def act(self, game_state: dict) -> str:
+    if game_state['step'] % 20 == 19:
+        self.logger.debug("Forced drop Bomb")
+        return 'BOMB'
     """
     Your agent should parse the input, think, and take a decision.
     When not in training mode, the maximum execution time for this method is 0.5s.
@@ -72,8 +73,8 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
-
     self.coordinate_history.append((game_state['self'][3][0], game_state['self'][3][1]))
+    self.steps = game_state['step']
 
     state = state_to_features(self, game_state, self.coordinate_history)
 
@@ -86,13 +87,15 @@ def act(self, game_state: dict) -> str:
         with torch.no_grad():
             self.logger.debug(f"Choosing action purely at random. Prob: {eps_threshold}")
         # 80%: walk in any direction. 10% wait. 10% bomb.
-        return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
+        return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .2, .0])
 
     self.logger.debug("Querying model for action.")
 
     state0 = torch.tensor(state, dtype=torch.float)
     prediction = self.model(state0)
     move = torch.argmax(prediction).item()
+
+    self.logger.debug(f"Chose action {ACTIONS[move]}")
 
     return ACTIONS[move]
 
@@ -260,6 +263,7 @@ def state_to_features(self, game_state: dict, coordinate_history: deque) -> np.a
     bomb_map = build_bomb_map(game_state)
     if bomb_map[self_x, self_y] == 5:
         in_danger = 0
+        self.shortest_way_safety = "Not In Danger"
     else:
         in_danger = 0.25 * (5 - bomb_map[self_x, self_y])
 
@@ -292,15 +296,22 @@ def state_to_features(self, game_state: dict, coordinate_history: deque) -> np.a
     crates = [(x, y) for x in cols for y in rows if (arena[x, y] == 1)]
     free_coins = coins
     free_crates = crates
-    free_space = arena == 0
+    safe_tiles = [(x, y) for x in cols for y in rows if (arena[x, y] == 0)]
 
     # Exclude targets that are currently occupied by a bomb
     bombs = game_state['bombs']
+    explosions = game_state['explosion_map']
     bomb_xys = [xy for (xy, t) in bombs]
-    free_coins = [coin for coin in free_coins if coin not in bomb_xys]
-    free_crates = [crate for crate in free_crates if crate not in bomb_xys]
+    free_coins = [coin for coin in free_coins if bomb_map[coin[0], coin[1]] == 5 and explosions[coin[0], coin[1]] == 0]
+    if len(free_coins) == 0:
+        self.shortest_way_coin = "No More Coins"
+    free_crates = [crate for crate in free_crates if bomb_map[crate[0], crate[1]] == 5 and explosions[crate[0], crate[1]] == 0]
+    if len(free_crates) == 0:
+        self.shortest_way_crate = "No More Crates"
+    safe_tiles = [tile for tile in safe_tiles if bomb_map[tile[0], tile[1]] == 5 and explosions[tile[0], tile[1]] == 0]
 
-    # Exclude free tiles that are occupied by others
+    # Exclude tiles that are occupied by walls, crates, danger, explosions and others
+    free_space = np.logical_and(arena == 0, explosions == 0, bomb_map == 5)
     others = [xy for (n, s, b, xy) in game_state['others']]
     for o in others:
         free_space[o] = False
@@ -341,6 +352,24 @@ def state_to_features(self, game_state: dict, coordinate_history: deque) -> np.a
         shortest_way_crate_right = 1.0
         self.shortest_way_crate = "RIGHT"
 
+    dir_safety = look_for_targets(free_space, (self_x, self_y), safe_tiles)
+    shortest_way_safety_up = 0.0
+    shortest_way_safety_right = 0.0
+    shortest_way_safety_down = 0.0
+    shortest_way_safety_left = 0.0
+    if dir_safety == (self_x - 1, self_y):
+        shortest_way_safety_up = 1.0
+        self.shortest_way_safety = "UP"
+    if dir_safety == (self_x + 1, self_y):
+        shortest_way_safety_down = 1.0
+        self.shortest_way_safety = "DOWN"
+    if dir_safety == (self_x, self_y - 1):
+        shortest_way_safety_left = 1.0
+        self.shortest_way_safety = "LEFT"
+    if dir_safety == (self_x, self_y + 1):
+        shortest_way_safety_right = 1.0
+        self.shortest_way_safety = "RIGHT"
+
     # Build feature vector
     flat_arena = arena.flatten()
     rest_features = np.array([step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
@@ -350,10 +379,17 @@ def state_to_features(self, game_state: dict, coordinate_history: deque) -> np.a
                               shortest_way_coin_up, shortest_way_coin_right,
                               shortest_way_coin_down, shortest_way_coin_left,
                               shortest_way_crate_up, shortest_way_crate_right,
-                              shortest_way_crate_down, shortest_way_crate_left])
+                              shortest_way_crate_down, shortest_way_crate_left,
+                              shortest_way_safety_up, shortest_way_safety_right,
+                              shortest_way_safety_down, shortest_way_safety_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
-    return rest_features
+    test_vector = np.array([in_danger, shortest_way_coin_up, shortest_way_coin_right,
+                            shortest_way_coin_down, shortest_way_coin_left,
+                            shortest_way_safety_up, shortest_way_safety_right,
+                            shortest_way_safety_down, shortest_way_safety_left])
+
+    return test_vector
 
 
 class Linear_QNet(nn.Module):

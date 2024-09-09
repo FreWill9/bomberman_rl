@@ -26,13 +26,12 @@ experiment_state = {'round': 1,
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
 
-                    'self': ('random_agent', 23, True, (np.int64(1), np.int64(2))),
+                    'self': ('random_agent', 23, True, (np.int64(1), np.int64(1))),
 
                     'others': [('peaceful_agent', 3, True, (np.int64(2), np.int64(15))),
                                ('coin_collector_agent', 9, False, (np.int64(15), np.int64(15)))],
 
-                    'bombs': [((np.int64(11), np.int64(14)), 1),
-                              ((np.int64(15), np.int64(15)), 2)],
+                    'bombs': [((np.int64(15), np.int64(15)), 2)],
 
                     'coins': [(np.int64(1), np.int64(1))],
 
@@ -238,57 +237,113 @@ def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
     else:
         placement = -1
 
-    # Up, Right, Down, Left
+    # Up, Right, Down, Left, Touching_crate
+    touching_crate = False
     up = tile_value(game_state, (self_x - 1, self_y), coordinate_history)
     right = tile_value(game_state, (self_x, self_y + 1), coordinate_history)
     down = tile_value(game_state, (self_x + 1, self_y), coordinate_history)
     left = tile_value(game_state, (self_x, self_y - 1), coordinate_history)
+    if up == 0.5 or right == 0.5 or down == 0.5 or left == 0.5:
+        touching_crate = True
 
     # Todo: shortest ways
-    coins = game_state['coins']
     cols = range(1, arena.shape[0] - 1)
     rows = range(1, arena.shape[0] - 1)
-    targets = coins
-    free_space = arena == 0
+
+    coins = game_state['coins']
+    # dead_ends = [(x, y) for x in cols for y in rows if (arena[x, y] == 0)
+    #              and ([arena[x + 1, y], arena[x - 1, y], arena[x, y + 1], arena[x, y - 1]].count(0) == 1)]
+    crates = [(x, y) for x in cols for y in rows if (arena[x, y] == 1)]
+    free_coins = coins
+    free_crates = crates
+    safe_tiles = [(x, y) for x in cols for y in rows if (arena[x, y] == 0)]
 
     # Exclude targets that are currently occupied by a bomb
     bombs = game_state['bombs']
+    explosions = game_state['explosion_map']
     bomb_xys = [xy for (xy, t) in bombs]
-    targets = [target for target in targets if target not in bomb_xys]
+    free_coins = [coin for coin in free_coins if bomb_map[coin[0], coin[1]] == 5 and explosions[coin[0], coin[1]] == 0]
+    if len(free_coins) == 0:
+        shortest_way_coin = "No More Coins"
+    free_crates = [crate for crate in free_crates if bomb_map[crate[0], crate[1]] == 5 and explosions[crate[0], crate[1]] == 0]
+    if len(free_crates) == 0:
+        shortest_way_crate = "No More Crates"
+    safe_tiles = [tile for tile in safe_tiles if bomb_map[tile[0], tile[1]] == 5 and explosions[tile[0], tile[1]] == 0]
 
-    # Exclude free tiles that are occupied by others
+    # Exclude tiles that are occupied by walls, crates, danger, explosions and others
+    free_space = np.logical_and(arena == 0, explosions == 0, bomb_map == 5)
     others = [xy for (n, s, b, xy) in game_state['others']]
     for o in others:
         free_space[o] = False
 
-    d = look_for_targets(free_space, (self_x, self_y), targets)
+    shortest_way_coin = 'No More Coins'
+    dir_coin = look_for_targets(free_space, (self_x, self_y), free_coins)
     shortest_way_coin_up = 0.0
     shortest_way_coin_right = 0.0
     shortest_way_coin_down = 0.0
     shortest_way_coin_left = 0.0
-    shortest_way_coin = "No Coin"
-    if d == (self_x - 1, self_y):
+    if dir_coin == (self_x - 1, self_y):
         shortest_way_coin_up = 1.0
         shortest_way_coin = "UP"
-    if d == (self_x + 1, self_y):
+    if dir_coin == (self_x + 1, self_y):
         shortest_way_coin_down = 1.0
         shortest_way_coin = "DOWN"
-    if d == (self_x, self_y - 1):
+    if dir_coin == (self_x, self_y - 1):
         shortest_way_coin_left = 1.0
         shortest_way_coin = "LEFT"
-    if d == (self_x, self_y + 1):
+    if dir_coin == (self_x, self_y + 1):
         shortest_way_coin_right = 1.0
         shortest_way_coin = "RIGHT"
 
     print(shortest_way_coin_up, shortest_way_coin_right, shortest_way_coin_down, shortest_way_coin_left, shortest_way_coin)
+
+    dir_crate = look_for_targets(free_space, (self_x, self_y), free_crates)
+    shortest_way_crate_up = 0.0
+    shortest_way_crate_right = 0.0
+    shortest_way_crate_down = 0.0
+    shortest_way_crate_left = 0.0
+    if dir_crate == (self_x - 1, self_y):
+        shortest_way_crate_up = 1.0
+        shortest_way_crate = "UP"
+    if dir_crate == (self_x + 1, self_y):
+        shortest_way_crate_down = 1.0
+        shortest_way_crate = "DOWN"
+    if dir_crate == (self_x, self_y - 1):
+        shortest_way_crate_left = 1.0
+        shortest_way_crate = "LEFT"
+    if dir_crate == (self_x, self_y + 1):
+        shortest_way_crate_right = 1.0
+        shortest_way_crate = "RIGHT"
+
+    shortest_way_safety = 'Not In Danger'
+    dir_safety = look_for_targets(free_space, (self_x, self_y), safe_tiles)
+    shortest_way_safety_up = 0.0
+    shortest_way_safety_right = 0.0
+    shortest_way_safety_down = 0.0
+    shortest_way_safety_left = 0.0
+    if dir_safety == (self_x - 1, self_y):
+        shortest_way_safety_up = 1.0
+        shortest_way_safety = "UP"
+    if dir_safety == (self_x + 1, self_y):
+        shortest_way_safety_down = 1.0
+        shortest_way_safety = "DOWN"
+    if dir_safety == (self_x, self_y - 1):
+        shortest_way_safety_left = 1.0
+        shortest_way_safety = "LEFT"
+    if dir_safety == (self_x, self_y + 1):
+        shortest_way_safety_right = 1.0
+        shortest_way_safety = "RIGHT"
 
     # Build feature vector
     flat_arena = arena.flatten()
     rest_features = np.array([step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
                               score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
                               x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
-                              in_danger, placement, up, right, down, left,
-                              shortest_way_coin_up, shortest_way_coin_right, shortest_way_coin_down, shortest_way_coin_left])
+                              in_danger, placement, up, right, down, left, touching_crate,
+                              shortest_way_coin_up, shortest_way_coin_right,
+                              shortest_way_coin_down, shortest_way_coin_left,
+                              shortest_way_crate_up, shortest_way_crate_right,
+                              shortest_way_crate_down, shortest_way_crate_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
     return rest_features
