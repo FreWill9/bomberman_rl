@@ -2,13 +2,13 @@ from collections import namedtuple, deque
 import pickle
 from typing import List
 import events as e
-from .callbacks import state_to_features, Linear_QNet, QTrainer
-
-import torch
-
 import random
 import matplotlib.pyplot as plt
-from IPython import display
+import torch
+
+from .callbacks import state_to_features, Linear_QNet, QTrainer
+from .helpers import transpose_action, encode_action, plot
+from .custom_events import *
 
 # if GPU is to be used
 device = torch.device(
@@ -16,34 +16,13 @@ device = torch.device(
     "mps" if torch.backends.mps.is_available() else
     "cpu")
 
-NOT_WAITED = "NOT_WAITED"
-
-NO_COIN_FOR_X_MOVES = "NO_COIN_FOR_X_MOVES"
-
-LOOP = "LOOP"
-NO_LOOP = "NO_LOOP"
-NO_LOOP_SCORE = "NO_LOOP_SCORE"
-
-HIGH_SCORING_GAME = "HIGH_SCORING_GAME"
-PERFECT_COIN_HEAVEN = "PERFECT_COIN_HEAVEN"
-LOW_SCORING_GAME = "LOW_SCORING_GAME"
-
-SHORTEST_WAY_COIN = "SHORTEST_WAY_COIN"
-NOT_SHORTEST_WAY_COIN = "NOT_SHORTEST_WAY_COIN"
-SHORTEST_WAY_CRATE = "SHORTEST_WAY_CRATE"
-NOT_SHORTEST_WAY_CRATE = "NOT_SHORTEST_WAY_CRATE"
-SHORTEST_WAY_SAFETY = "SHORTEST_WAY_SAFETY"
-NOT_SHORTEST_WAY_SAFETY = "NOT_SHORTEST_WAY_SAFETY"
-
 # This is only an example!
 Memory = namedtuple('Memory',
                     ('state', 'action', 'reward', 'next_state', 'done'))
 
 # Hyperparameters -- DO modify
-# TRANSITION_HISTORY_SIZE = 3  # keep only ... last transitions
-# RECORD_ENEMY_TRANSITIONS = 1.0  # record enemy transitions with probability ...
 MAX_MEMORY = 10_000
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 LR = 0.001
 
 plot_scores = []
@@ -59,8 +38,8 @@ def setup_training(self):
 
     :param self: This object is passed to all callbacks, and you can set arbitrary values.
     """
-    # Example: Set up an array that will note transition tuples
-    # (s, a, r, s')
+    # Example: Set up an array that will remember transition tuples
+    # (s, a, r, s_new)
     # self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
 
     self.plot_scores = []
@@ -265,49 +244,3 @@ def reward_from_events(self, events: List[str], score) -> int:
             reward_sum += game_rewards_stage_1[event]
     self.logger.info(f"Awarded {reward_sum} for events {', '.join(events)}")
     return reward_sum
-
-
-def plot(scores, mean_scores):
-    display.clear_output(wait=True)
-    display.display(plt.gcf())
-    plt.clf()
-    plt.title('Training...')
-    plt.xlabel('Number of Games')
-    plt.ylabel('Score')
-    plt.plot(scores)
-    plt.plot(mean_scores)
-    plt.ylim(ymin=0)
-    plt.text(len(scores)-1, scores[-1], str(scores[-1]))
-    plt.text(len(mean_scores)-1, mean_scores[-1], str(mean_scores[-1]))
-    plt.show(block=False)
-    plt.pause(.1)
-
-
-def transpose_action(action: str) -> str:
-    match action:
-        case "UP":
-            return "LEFT"
-        case "RIGHT":
-            return "DOWN"
-        case "DOWN":
-            return "RIGHT"
-        case "LEFT":
-            return "UP"
-        case _:
-            return action
-
-
-def encode_action(action: str) -> float:
-    match action:
-        case 'UP':
-            return 0.0
-        case 'RIGHT':
-            return 1.0
-        case 'DOWN':
-            return 2.0
-        case 'LEFT':
-            return 3.0
-        case 'WAIT':
-            return 4.0
-        case 'BOMB':
-            return 5.0

@@ -3,17 +3,14 @@ import pickle
 import random
 from collections import deque
 import numpy as np
+import math
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-import matplotlib
-import matplotlib.pyplot as plt
-import pdb
-from random import shuffle
-import math
+from .helpers import look_for_targets, build_bomb_map, tile_value
 
 # if GPU is to be used
 device = torch.device(
@@ -98,99 +95,6 @@ def act(self, game_state: dict) -> str:
     self.logger.debug(f"Chose action {ACTIONS[move]}")
 
     return ACTIONS[move]
-
-
-def build_bomb_map(game_state: dict):
-    bomb_map = np.ones(game_state['field'].shape) * 5
-    for (xb, yb), t in game_state['bombs']:
-        for (i, j) in [(xb + h, yb) for h in range(-3, 4)] + [(xb, yb + h) for h in range(-3, 4)]:
-            if (0 < i < bomb_map.shape[0]) and (0 < j < bomb_map.shape[1]):
-                bomb_map[i, j] = min(bomb_map[i, j], t)
-
-    return bomb_map
-
-
-def tile_value(game_state: dict, coord: (int, int), coordinate_history: deque) -> float:
-    bomb_map = build_bomb_map(game_state)
-    explosion_map = game_state['explosion_map']
-    bomb_coord = [xy for (xy, t) in game_state['bombs']]
-    opp_coord = [xy for (n, s, b, xy) in game_state['others']]
-    temp = 0.0
-
-    match game_state['field'][coord[0], coord[1]]:
-        case 0:
-            temp = 0.0
-        case -1:
-            temp = -0.45
-        case 1:
-            temp = 0.5
-    if coordinate_history.count((coord[0], coord[1])) > 2:
-        temp = -0.4
-    if (coord[0], coord[1]) in opp_coord:
-        temp = -0.5
-    if (coord[0], coord[1]) in game_state['coins']:
-        temp = 1.0
-    if bomb_map[coord[0], coord[1]] < 5:
-        temp = -0.9
-    if explosion_map[coord[0], coord[1]] > 0:
-        temp = -1.0
-    if (coord[0], coord[1]) in bomb_coord:
-        temp = -1.0
-
-    return temp
-
-
-def look_for_targets(free_space, start, targets, logger=None):
-    """
-    Find direction of the closest target that can be reached via free tiles.
-
-    Performs a breadth-first search of the reachable free tiles until a target is encountered.
-    If no target can be reached, the path that takes the agent closest to any target is chosen.
-
-    Args:
-        free_space: Boolean numpy array. True for free tiles and False for obstacles.
-        start: the coordinate from which to begin the search.
-        targets: list or array holding the coordinates of all target tiles.
-        logger: optional logger object for debugging.
-    Returns:
-        coordinate of first step towards the closest target or towards tile closest to any target.
-    """
-    if len(targets) == 0:
-        return None
-
-    frontier = [start]
-    parent_dict = {start: start}
-    dist_so_far = {start: 0}
-    best = start
-    best_dist = np.sum(np.abs(np.subtract(targets, start)), axis=1).min()
-
-    while len(frontier) > 0:
-        current = frontier.pop(0)
-        # Find distance from current position to all targets, track closest
-        d = np.sum(np.abs(np.subtract(targets, current)), axis=1).min()
-        if d + dist_so_far[current] <= best_dist:
-            best = current
-            best_dist = d + dist_so_far[current]
-        if d == 0:
-            # Found path to a target's exact position, mission accomplished!
-            best = current
-            break
-        # Add unexplored free neighboring tiles to the queue in a random order
-        x, y = current
-        neighbors = [(x, y) for (x, y) in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] if free_space[x, y]]
-        shuffle(neighbors)
-        for neighbor in neighbors:
-            if neighbor not in parent_dict:
-                frontier.append(neighbor)
-                parent_dict[neighbor] = current
-                dist_so_far[neighbor] = dist_so_far[current] + 1
-
-    if logger: logger.debug(f'Suitable target found at {best}')
-    # Determine the first step towards the best found target tile
-    current = best
-    while True:
-        if parent_dict[current] == start: return current
-        current = parent_dict[current]
 
 
 def state_to_features(self, game_state: dict, coordinate_history: deque) -> np.array:
