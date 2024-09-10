@@ -65,7 +65,15 @@ def act(self, game_state: dict) -> str:
     """
     self.coordinate_history.append((game_state['self'][3][0], game_state['self'][3][1]))
 
-    state = state_to_features(game_state, self.coordinate_history)
+    state = state_to_features(self, game_state, self.coordinate_history)
+
+    if game_state['step'] % 20 == 0:
+        self.logger.info(f"Force dropping bomb after 100 steps.")
+        self.force_bomb = True
+        return 'BOMB'
+    else:
+        self.force_bomb = False
+
 
     # todo Exploration vs exploitation
     random_prob = 0.0
@@ -74,13 +82,13 @@ def act(self, game_state: dict) -> str:
         case rounds if rounds < 60:
             random_prob = .2
         case rounds if 30 <= rounds < 200:
-            random_prob = .1
-        case rounds if 60 <= rounds < 600:
             random_prob = .05
+        case rounds if 60 <= rounds < 600:
+            random_prob = .0
     if self.train and random.random() < random_prob:
         self.logger.debug("Choosing action purely at random.")
         # 80%: walk in any direction. 10% wait. 10% bomb.
-        return np.random.choice(ACTIONS, p=[.25, .25, .25, .25, .0, .0])
+        # return np.random.choice(ACTIONS, p=[.25, .25, .25, .25, .0, .0])
 
     self.logger.debug("Querying model for action.")
 
@@ -92,7 +100,7 @@ def act(self, game_state: dict) -> str:
     return ACTIONS[move]
 
 
-def build_bomb_map(game_state: dict):
+def build_bomb_map2(game_state: dict):
     bomb_map = np.ones(game_state['field'].shape) * 5
     for (xb, yb), t in game_state['bombs']:
         for (i, j) in [(xb + h, yb) for h in range(-3, 4)] + [(xb, yb + h) for h in range(-3, 4)]:
@@ -102,13 +110,103 @@ def build_bomb_map(game_state: dict):
     return bomb_map
 
 
+def in_field(x, y, game_state):
+    return 0 <= x < game_state['field'].shape[0] and 0 <= y < game_state['field'].shape[1]
+
+
+def passable(x, y, game_state):
+    return (in_field(x, y, game_state) and game_state['field'][x, y] == 0
+            and (x, y) not in [xy for xy, t in game_state['bombs']]
+            and (x, y) not in [xy for (n, s, b, xy) in game_state['others']])
+
+
+def build_bomb_map(game_state: dict):
+    bomb_map = np.ones(game_state['field'].shape) * 100
+    for (xb, yb), t in game_state['bombs']:
+        bomb_map[xb, yb] = min(bomb_map[xb, yb], t)
+        for i in range(1, 4):
+            if in_field(xb + i, yb, game_state) and game_state['field'][xb + i, yb] != -1:
+                bomb_map[xb + i, yb] = min(bomb_map[xb + i, yb], t)
+            else:
+                break
+        for i in range(1, 4):
+            if in_field(xb - i, yb, game_state) and game_state['field'][xb - i, yb] != -1:
+                bomb_map[xb - i, yb] = min(bomb_map[xb - i, yb], t)
+            else:
+                break
+        for i in range(1, 4):
+            if in_field(xb, yb + i, game_state) and game_state['field'][xb, yb + i] != -1:
+                bomb_map[xb, yb + i] = min(bomb_map[xb, yb + i], t)
+            else:
+                break
+        for i in range(1, 4):
+            if in_field(xb, yb - i, game_state) and game_state['field'][xb, yb - i] != -1:
+                bomb_map[xb, yb - i] = min(bomb_map[xb, yb - i], t)
+            else:
+                break
+
+    return bomb_map
+
+
+def safe_distance(game_state: dict, coord: (int, int), max_steps: int) -> int:
+    """
+    Calculate the distance to the closest safe tile from the given coordinate.
+    """
+    bomb_map = build_bomb_map(game_state)
+    explosion_map = game_state['explosion_map'].copy()
+    bombs = [(x, y) for (x, y), t in game_state['bombs']]
+
+    if bomb_map[coord[0], coord[1]] == 100.0:
+        return 0
+
+    # Use BFS to find closest safe tile that is reachable (including waiting).
+    tile_queue = deque([(coord[0], coord[1])])
+    steps = 0
+    while len(tile_queue) > 0 and steps <= max_steps:
+        current_tile = tile_queue.popleft()
+        x, y = current_tile
+        if bomb_map[x, y] == 100.0:
+            return steps
+
+        if bomb_map[x, y] > 1.0 and explosion_map[x, y] == 0.0:
+            tile_queue.append((x, y))
+
+        if (in_field(x + 1, y, game_state) and game_state['field'][x + 1, y] == 0 and (x + 1, y) not in bombs
+                and bomb_map[x + 1, y] > 1.0 and explosion_map[x + 1, y] == 0.0):
+            tile_queue.append((x + 1, y))
+
+        if (in_field(x - 1, y, game_state) and game_state['field'][x - 1, y] == 0 and (x - 1, y) not in bombs
+                and bomb_map[x - 1, y] > 1.0 and explosion_map[x - 1, y] == 0.0):
+            tile_queue.append((x - 1, y))
+
+        if (in_field(x, y + 1, game_state) and game_state['field'][x, y + 1] == 0 and (x, y + 1) not in bombs
+                and bomb_map[x, y + 1] > 1.0 and explosion_map[x, y + 1] == 0.0):
+            tile_queue.append((x, y + 1))
+
+        if (in_field(x, y - 1, game_state) and game_state['field'][x, y - 1] == 0 and (x, y - 1) not in bombs
+                and bomb_map[x, y - 1] > 1.0 and explosion_map[x, y - 1] == 0.0):
+            tile_queue.append((x, y - 1))
+
+        steps += 1
+
+        bomb_map = bomb_map - 1.0
+
+        explosion_map = explosion_map + 1.0
+        explosion_map[explosion_map != 2.0] = 0.0
+        explosion_map[bomb_map == 0.0] = 1.0
+
+        bomb_map[bomb_map <= -0.0] = 100.0
+
+    return max_steps
+
+
 def manhattan_dist(x1, y1, x2, y2):
     return abs(x1 - x2) + abs(y1 - y2)
 
 
 def coin_dist_sum(game_state: dict, x, y):
     coins = game_state['coins']
-    res = sum([2/(manhattan_dist(x, y, c[0], c[1] + 0.1)) for c in coins])
+    res = sum([2 / (manhattan_dist(x, y, c[0], c[1] + 0.1)) for c in coins])
     # normalize
     return res / max(len(coins), 1)
 
@@ -200,7 +298,7 @@ def look_for_targets(free_space, start, targets, logger=None):
         current = parent_dict[current]
 
 
-def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
+def state_to_features(self, game_state: dict, coordinate_history: deque) -> np.array:
     """
     *This is not a required function, but an idea to structure your code.*
 
@@ -220,119 +318,52 @@ def state_to_features(game_state: dict, coordinate_history: deque) -> np.array:
         return None
 
     # Gather information about the game state. Normalize to -1 <= x <= 1.
-    # Arena 17 x 17 = 289
     arena = game_state['field']
-
-    # Step
     step = game_state['step'] / 400
+    self_x, self_y = game_state['self'][3]
 
-    # Score, Bomb_avail, Coordinates, Alone
-    score_self = game_state['self'][1] / 100
-    bomb_avail = int(game_state['self'][2])
-    self_x = game_state['self'][3][0]
-    self_y = game_state['self'][3][1]
-    self_x_normalized = self_x / 15
-    self_y_normalized = self_y / 15
-    try:
-        score_opp1 = game_state['others'][0][1] / 100
-        bomb_opp1 = int(game_state['others'][0][2])
-        x_opp1 = game_state['others'][0][3][0] / 15
-        y_opp1 = game_state['others'][0][3][1] / 15
-        alone = 0
-    except IndexError:
-        score_opp1 = 0
-        bomb_opp1 = 0
-        x_opp1 = -1  # 0 or -1
-        y_opp1 = -1
-        alone = 1
-    try:
-        score_opp2 = game_state['others'][1][1] / 100
-        bomb_opp2 = int(game_state['others'][1][2])
-        x_opp2 = game_state['others'][1][3][0] / 15
-        y_opp2 = game_state['others'][1][3][1] / 15
-    except IndexError:
-        score_opp2 = 0
-        bomb_opp2 = 0
-        x_opp2 = -1
-        y_opp2 = -1
-    try:
-        score_opp3 = game_state['others'][2][1] / 100
-        bomb_opp3 = int(game_state['others'][2][2])
-        x_opp3 = game_state['others'][2][3][0] / 15
-        y_opp3 = game_state['others'][2][3][1] / 15
-    except IndexError:
-        score_opp3 = 0
-        bomb_opp3 = 0
-        x_opp3 = -1
-        y_opp3 = -1
+    # Can move
+    up = float(passable(self_x - 1, self_y, game_state))
+    right = float(passable(self_x, self_y + 1, game_state))
+    down = float(passable(self_x + 1, self_y, game_state))
+    left = float(passable(self_x, self_y - 1, game_state))
 
-    # In danger
-    bomb_map = build_bomb_map(game_state)
-    if bomb_map[self_x, self_y] == 5:
-        in_danger = 0
-    else:
-        in_danger = 0.25 * (5 - bomb_map[self_x, self_y])
+    def safety(val):
+        if val == 0:
+            return 1.0
+        if val < 3:
+            return 1.0
+        if val == 3:
+            return 1.0
+        return 0.0
 
-    # Placement
-    opp_scores = [score_opp1, score_opp2, score_opp3]
-    opp_scores.sort(reverse=True)
-    if score_self > opp_scores[0]:
-        placement = 1
-    elif score_self > opp_scores[1]:
-        placement = 0
-    else:
-        placement = -1
+    # Tile safety
+    self.safety_stay = safety(safe_distance(game_state, (self_x, self_y), 5))
+    self.safety_up = safety(safe_distance(game_state, (self_x - 1, self_y), 5))
+    self.safety_right = safety(safe_distance(game_state, (self_x, self_y + 1), 5))
+    self.safety_down = safety(safe_distance(game_state, (self_x + 1, self_y), 5))
+    self.safety_left = safety(safe_distance(game_state, (self_x, self_y - 1), 5))
 
-    # Up, Right, Down, Left
-    up = tile_value(game_state, (self_x - 1, self_y), coordinate_history)
-    right = tile_value(game_state, (self_x, self_y + 1), coordinate_history)
-    down = tile_value(game_state, (self_x + 1, self_y), coordinate_history)
-    left = tile_value(game_state, (self_x, self_y - 1), coordinate_history)
-    best_val = max(up, right, down, left)
+    # Coins
+    up_coins = tile_value(game_state, (self_x - 1, self_y), coordinate_history)
+    right_coins = tile_value(game_state, (self_x, self_y + 1), coordinate_history)
+    down_coins = tile_value(game_state, (self_x + 1, self_y), coordinate_history)
+    left_coins = tile_value(game_state, (self_x, self_y - 1), coordinate_history)
+    best_val = max(up_coins, right_coins, down_coins, left_coins)
     # convert to binary for which one is best
-    up = float(up == best_val) - 0.0001
-    right = float(right == best_val) - 0.0002
-    down = float(down == best_val) - 0.0003
-    left = float(left == best_val)
-
-    # Todo: shortest ways
-    coins = game_state['coins']
-    cols = range(1, arena.shape[0] - 1)
-    rows = range(1, arena.shape[0] - 1)
-    targets = coins
-    free_space = arena == 0
-
-    # Exclude targets that are currently occupied by a bomb
-    bombs = game_state['bombs']
-    bomb_xys = [xy for (xy, t) in bombs]
-    targets = [target for target in targets if target not in bomb_xys]
-
-    # Exclude free tiles that are occupied by others
-    others = [xy for (n, s, b, xy) in game_state['others']]
-    for o in others:
-        free_space[o] = False
-
-    d = look_for_targets(free_space, (self_x, self_y), targets)
-    shortest_way_coin = 0.0
-    if d == (self_x - 1, self_y):
-        shortest_way_coin = 0.5
-    if d == (self_x + 1, self_y):
-        shortest_way_coin = -0.5
-    if d == (self_x, self_y - 1):
-        shortest_way_coin = -1.0
-    if d == (self_x, self_y + 1):
-        shortest_way_coin = 1
+    up_coins = float(up_coins == best_val) - 0.0001
+    right_coins = float(right_coins == best_val) - 0.0002
+    down_coins = float(down_coins == best_val) - 0.0003
+    left_coins = float(left_coins == best_val)
 
     # Build feature vector
-    flat_arena = arena.flatten()
-    rest_features = np.array([step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
-                              score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
-                              x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
-                              in_danger, placement, up, right, down, left, shortest_way_coin])
-    rest_features = np.array([up, right, down, left])
-    feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
+    features = np.array([up, right, down, left,
+                         up_coins, right_coins, down_coins, left_coins,
+                         self.safety_stay, self.safety_up, self.safety_right, self.safety_down, self.safety_left,
+                         ])
+    print(features)
 
-    return rest_features
+    return features
 
 
 class Linear_QNet(nn.Module):
