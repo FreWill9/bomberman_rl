@@ -4,7 +4,7 @@ import pickle
 from typing import List
 
 import events as e
-from .callbacks import state_to_features, Linear_QNet, QTrainer, coin_dist_sum
+from .callbacks import state_to_features, Linear_QNet, QTrainer, coin_dist_sum, coin_score
 
 import torch
 import torch.nn as nn
@@ -72,7 +72,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.model = Linear_QNet(13, 32, 32, 6).to(device)
+    self.model = Linear_QNet(8, 16, 16, 6).to(device)
     self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
 
@@ -99,28 +99,22 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     action = encode_action(self_action)
     state_new = new_game_state
 
+    # state_to_features is defined in callbacks.py
+    # remember
+    features_old = state_to_features(self, state_old)
+    features_new = state_to_features(self, state_new)
+
     # Idea: Add your own events to hand out rewards
     if 'WAIT' not in events:
         events.append(NOT_WAITED)
 
-    # If agent has been in the same location three times recently, it's a loop
-    if self.coordinate_history.count((state_new['self'][3][0], state_new['self'][3][1])) >= 2:
-        events.append(LOOP)
-    else:
-        events.append(NO_LOOP)
-
-    # rewards = reward_from_events(self, events, state_new['self'][1])
-    # Agent should not move back and forth between two tiles
-    if (len(self.coordinate_history) >= 2
-            and self.coordinate_history[-2] == (state_new['self'][3][0], state_new['self'][3][1])):
-        events.append(MOVED_BACK)
-
     # If tile value increases, agent is moving towards coin
-    if (coin_dist_sum(state_old, state_old['self'][3][0], state_old['self'][3][1])
-            < coin_dist_sum(state_new, state_new['self'][3][0], state_new['self'][3][1])):
-        events.append(MOVED_TO_COIN)
-    else:
-        events.append(MOVED_AWAY_FROM_COIN)
+    if len(state_old['coins']) > 0:
+        if (coin_score(state_old, state_old['self'][3][0], state_old['self'][3][1])
+                < coin_score(state_new, state_new['self'][3][0], state_new['self'][3][1])):
+            events.append(MOVED_TO_COIN)
+        else:
+            events.append(MOVED_AWAY_FROM_COIN)
 
     # Moved safely
     if 'MOVED_UP' in events:
@@ -150,15 +144,11 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             events.append(DOOMED_SELF)
 
     rewards = reward_from_events(self, events, state_new['self'][1])
-    # Todo: Reward for taking the shortest path to the next coin
 
-    # state_to_features is defined in callbacks.py
-    # remember
-    features = state_to_features(self, state_old, self.coordinate_history)
-    self.memory.append(Memory(features, action, rewards, features, False))
+    self.memory.append(Memory(features_old, action, rewards, features_new, False))
 
     # train short memory
-    self.trainer.train_step(features, action, rewards, features, False)
+    self.trainer.train_step(features_old, action, rewards, features_new, False)
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -181,16 +171,17 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     rewards = reward_from_events(self, events, state_old['self'][1])
 
     score = state_old['self'][1]
-    if score < 40:
+    coins_left = len(last_game_state['coins'])
+    if coins_left > 10:
         events.append(LOW_SCORING_GAME)
-    if score > 45:
+    elif coins_left > 0:
         events.append(HIGH_SCORING_GAME)
-    if score == 50:
+    else:
         events.append(PERFECT_COIN_HEAVEN)
 
-    # remember Todo: last state passed twice as parameter because easier with train step... is this a problem?
-    self.memory.append(
-        Memory(state_to_features(self, state_old, self.coordinate_history), action, rewards, state_to_features(self, state_old, self.coordinate_history), True))
+    # same features are passed twice since new features are not available / ignored for last step
+    features = state_to_features(self, state_old)
+    self.memory.append(Memory(features, action, rewards, features, True))
 
     # train long memory
     if len(self.memory) > BATCH_SIZE:
@@ -231,27 +222,25 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.MOVED_RIGHT: +0,
         e.MOVED_DOWN: +0,
         e.MOVED_LEFT: +0,
-        e.KILLED_SELF: -50,
-        e.INVALID_ACTION: -10,
+        e.KILLED_SELF: -1000,
+        e.INVALID_ACTION: -5,
         e.WAITED: -1,
         e.SURVIVED_ROUND: +0,
         e.GOT_KILLED: -100,
-        e.BOMB_DROPPED: -1,
+        e.BOMB_DROPPED: -5,
         NOT_WAITED: +0,
         # LOOP: -2,
         # NO_LOOP: +2,
         HIGH_SCORING_GAME: +50,
         PERFECT_COIN_HEAVEN: + 500,
-        LOW_SCORING_GAME: -20,
-        MOVED_TO_COIN: +1,
-        MOVED_AWAY_FROM_COIN: -1,
-        # MOVED_BACK: -1,
+        LOW_SCORING_GAME: +0,
+        # MOVED_TO_COIN: +1,
+        # MOVED_AWAY_FROM_COIN: -1,
+        MOVED_BACK: -1,
         # e.KILLED_OPPONENT: -5
         # STAYED_SAFE: +3,
-        DOOMED_SELF: -20
+        DOOMED_SELF: -50
     }
-    if self.force_bomb:
-        return 0
     reward_sum = score // 10
     for event in events:
         if event in game_rewards:
