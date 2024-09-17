@@ -20,9 +20,9 @@ device = torch.device(
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
-EPS_START = 0.75
-EPS_END = 0.03
-EPS_DECAY = 500
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 400
 
 
 def setup(self):
@@ -51,7 +51,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = Linear_QNet(16, 64, 64, 6).to(device)
+        self.model = Linear_QNet(20, 128, 128, 6).to(device)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -59,11 +59,11 @@ def setup(self):
 
 
 def act(self, game_state: dict) -> str:
-    """
-    if game_state['step'] % 20 == 19:
+
+    """if game_state['step'] % 20 == 19:
         self.logger.debug("Forced drop Bomb")
-        return 'BOMB'
-    """
+        return 'BOMB'"""
+
     """
     Your agent should parse the input, think, and take a decision.
     When not in training mode, the maximum execution time for this method is 0.5s.
@@ -287,6 +287,8 @@ def state_to_features(self, game_state: dict) -> np.array:
     test_vector = np.array([in_danger, bomb_avail, up, right, down, left, self.touching_crate, first_step,
                             shortest_way_coin_up, shortest_way_coin_right,
                             shortest_way_coin_down, shortest_way_coin_left,
+                            shortest_way_crate_up, shortest_way_crate_right,
+                            shortest_way_crate_down, shortest_way_crate_left,
                             shortest_way_safety_up, shortest_way_safety_right,
                             shortest_way_safety_down, shortest_way_safety_left])
 

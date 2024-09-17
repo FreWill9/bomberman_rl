@@ -145,23 +145,21 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
 
     # remember
     # For debugging
-    self.logger.debug(f"remembered feature vectors\n"
+    """self.logger.debug(f"remembered feature vectors\n"
                       f"0: {state_old_features, action_enc, reward, state_new_features} \n"
                       f"x: {x_old_features, x_act_enc, reward, x_new_features} \n"
                       f"y: {y_old_features, y_act_enc, reward, y_new_features} \n"
-                      f"xy: {xy_old_features, xy_act_enc, reward, xy_new_features} \n")
+                      f"xy: {xy_old_features, xy_act_enc, reward, xy_new_features} \n")"""
     self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
-    self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
-    self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
-    self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
+    # self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
+    # self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
+    # self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
 
     # train short term memory
-    start_time = time.time()
     self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
-    self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
-    self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
-    self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
-    self.logger.debug("--- %s seconds ---" % (time.time() - start_time))
+    # self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
+    # self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
+    # self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -205,16 +203,15 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # remember Todo: last state passed twice as parameter because easier with train step... is this a problem?
     self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
-    self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
-    self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
-    self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
+    # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
+    # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
+    # self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
 
     # train short term memory
-
     self.trainer.train_step(last_state_features, last_action_enc, reward, last_state_features, True)
-    self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
-    self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
-    self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
+    # self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
+    # self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
+    # self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
 
     # train long term memory
     if len(self.memory) > BATCH_SIZE:
@@ -248,26 +245,28 @@ def reward_from_events(self, events: List[str], score) -> int:
     """
     # Stage 1
     game_rewards_stage_1 = {
-        e.COIN_COLLECTED: +0,
-        e.KILLED_SELF: -0,
+        e.COIN_COLLECTED: +1,
+        e.KILLED_SELF: -1,
         e.INVALID_ACTION: -1,
-        e.WAITED: -0,
+        e.WAITED: -1,
         e.SURVIVED_ROUND: +0,
-        e.BOMB_DROPPED: 0,
+        e.BOMB_DROPPED: -1,
         LOOP: 0,
         NO_LOOP: 0,
         HIGH_SCORING_GAME: +0,
         PERFECT_COIN_HEAVEN: +0,
         LOW_SCORING_GAME: -0,
         SHORTEST_WAY_COIN: +1,
-        NOT_SHORTEST_WAY_COIN: -1
+        NOT_SHORTEST_WAY_COIN: -1,
+        SHORTEST_WAY_SAFETY: +1,
+        NOT_SHORTEST_WAY_SAFETY: -1
     }
 
     # Stage 1.5
     # Remember to activate forced bomb drop in act()!
     game_rewards_stage_1_5 = {
         e.COIN_COLLECTED: +1,
-        e.KILLED_SELF: -7,
+        e.KILLED_SELF: -1,
         e.INVALID_ACTION: -1,
         e.WAITED: -0,
         e.SURVIVED_ROUND: +0,
@@ -285,29 +284,28 @@ def reward_from_events(self, events: List[str], score) -> int:
 
     # Stage 2
     game_rewards_stage_2 = {
-        e.COIN_COLLECTED: +3,
+        e.COIN_COLLECTED: +1,
         e.KILLED_SELF: -3,
-        e.INVALID_ACTION: -4,
-        e.WAITED: -0.5,
-        e.SURVIVED_ROUND: +2,
+        e.INVALID_ACTION: -1,
+        e.WAITED: -0,
+        e.SURVIVED_ROUND: +0,
         e.BOMB_DROPPED: +0,
         e.CRATE_DESTROYED: +1,
         e.COIN_FOUND: +1,
-        e.BOMB_EXPLODED: +0.5,
-        STEP_ONE_BOMB: -2,
+        e.BOMB_EXPLODED: +0,
+        STEP_ONE_BOMB: -0,
         NOT_STEP_ONE_BOMB: +0,
-        GOOD_BOMB: +2,
+        GOOD_BOMB: +1,
         BAD_BOMB: -1,
-        LOOP: -1,
-        NO_LOOP: +1,
-        HIGH_SCORING_GAME: +5,
-        SHORTEST_WAY_COIN: +4,
-        NOT_SHORTEST_WAY_COIN: -5,
-        SHORTEST_WAY_SAFETY: +4,
-        NOT_SHORTEST_WAY_SAFETY: -5
+        LOOP: 0,
+        NO_LOOP: +0,
+        SHORTEST_WAY_COIN: +1,
+        NOT_SHORTEST_WAY_COIN: -1,
+        SHORTEST_WAY_SAFETY: +1,
+        NOT_SHORTEST_WAY_SAFETY: -1
     }
 
-    reward_sum = score
+    reward_sum = 0
     for event in events:
         if event in game_rewards_stage_2:
             reward_sum += game_rewards_stage_2[event]

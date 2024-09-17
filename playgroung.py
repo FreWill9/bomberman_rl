@@ -11,8 +11,8 @@ experiment_state = {'round': 1,
                         [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, -1, -1, -1, -1, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
-                         [-1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
-                         [-1, -1, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
@@ -26,14 +26,14 @@ experiment_state = {'round': 1,
                          [-1, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
 
-                    'self': ('random_agent', 23, True, (np.int64(1), np.int64(3))),
+                    'self': ('random_agent', 23, True, (np.int64(8), np.int64(1))),
 
-                    'others': [('agent_fred', 23, True, (np.int64(3), np.int64(4))),
+                    'others': [('agent_fred', 23, True, (np.int64(15), np.int64(15))),
                                ('peaceful_agent', 23, True, (np.int64(14), np.int64(15)))],
 
-                    'bombs': [((np.int64(15), np.int64(2)), 2)],
+                    'bombs': [((np.int64(6), np.int64(1)), 2)],
 
-                    'coins': [(np.int64(1), np.int64(5))],
+                    'coins': [(np.int64(1), np.int64(1))],
 
                     'user_input': None,
 
@@ -276,6 +276,12 @@ def state_to_features(self, game_state: dict) -> np.array:
 
 
 features = state_to_features(self, experiment_state)
+actions = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+
 x, y, xy = mirror_feature_vector(features)
-print(f"0: {features}\n x:{x}\n y:{y}\n xy:{xy}")
+for i in range(len(features)):
+    print(f"0: {features[i]}\n x:{y[i]}")
+
+"""for action in actions:
+    print(mirror_action(action))"""
 print("<3")

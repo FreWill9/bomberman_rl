@@ -44,7 +44,7 @@ def look_for_targets(free_space, start, targets, logger=None):
         # Add unexplored free neighboring tiles to the queue in a random order
         x, y = current
         neighbors = [(x, y) for (x, y) in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] if free_space[x, y]]
-        shuffle(neighbors)
+        # shuffle(neighbors)
         for neighbor in neighbors:
             if neighbor not in parent_dict:
                 frontier.append(neighbor)
