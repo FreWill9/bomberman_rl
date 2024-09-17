@@ -3,6 +3,7 @@ from random import shuffle
 from collections import deque
 from IPython import display
 import matplotlib.pyplot as plt
+import copy
 
 
 def look_for_targets(free_space, start, targets, logger=None):
@@ -78,7 +79,7 @@ def tile_value(game_state: dict, coord: (int, int), coordinate_history: deque) -
         temp = -0.5
     if (coord[0], coord[1]) in game_state['coins']:
         temp = 1.0
-    if bomb_map[coord[0], coord[1]] < 5:
+    if bomb_map[coord[0], coord[1]] != 100:
         temp = -0.9
     if explosion_map[coord[0], coord[1]] > 0:
         temp = -1.0
@@ -88,12 +89,34 @@ def tile_value(game_state: dict, coord: (int, int), coordinate_history: deque) -
     return temp
 
 
+def in_field(x, y, game_state) -> bool:
+    return 0 <= x < game_state['field'].shape[0] and 0 <= y < game_state['field'].shape[1]
+
+
 def build_bomb_map(game_state: dict):
-    bomb_map = np.ones(game_state['field'].shape) * 5
+    bomb_map = np.ones(game_state['field'].shape) * 100
     for (xb, yb), t in game_state['bombs']:
-        for (i, j) in [(xb + h, yb) for h in range(-3, 4)] + [(xb, yb + h) for h in range(-3, 4)]:
-            if (0 < i < bomb_map.shape[0]) and (0 < j < bomb_map.shape[1]):
-                bomb_map[i, j] = min(bomb_map[i, j], t)
+        bomb_map[xb, yb] = min(bomb_map[xb, yb], t)
+        for i in range(1, 4):
+            if in_field(xb + i, yb, game_state) and game_state['field'][xb + i, yb] != -1:
+                bomb_map[xb + i, yb] = min(bomb_map[xb + i, yb], t)
+            else:
+                break
+        for i in range(1, 4):
+            if in_field(xb - i, yb, game_state) and game_state['field'][xb - i, yb] != -1:
+                bomb_map[xb - i, yb] = min(bomb_map[xb - i, yb], t)
+            else:
+                break
+        for i in range(1, 4):
+            if in_field(xb, yb + i, game_state) and game_state['field'][xb, yb + i] != -1:
+                bomb_map[xb, yb + i] = min(bomb_map[xb, yb + i], t)
+            else:
+                break
+        for i in range(1, 4):
+            if in_field(xb, yb - i, game_state) and game_state['field'][xb, yb - i] != -1:
+                bomb_map[xb, yb - i] = min(bomb_map[xb, yb - i], t)
+            else:
+                break
 
     return bomb_map
 
@@ -128,6 +151,19 @@ def encode_action(action: str) -> float:
             return 5.0
 
 
+def coord_to_dir(x, y, coord_target) -> (str, float, float, float, float):
+    if coord_target is None or (x, y) == coord_target:
+        return 'None', 0.0, 0.0, 0.0, 0.0
+    if coord_target == (x - 1, y):
+        return 'UP', 1.0, 0.0, 0.0, 0.0
+    if coord_target == (x, y + 1):
+        return 'RIGHT', 0.0, 1.0, 0.0, 0.0
+    if coord_target == (x + 1, y):
+        return 'DOWN', 0.0, 0.0, 1.0, 0.0
+    if coord_target == (x, y - 1):
+        return 'LEFT', 0.0, 0.0, 0.0, 1.0
+
+
 def plot(scores, mean_scores):
     display.clear_output(wait=True)
     display.display(plt.gcf())
@@ -142,3 +178,110 @@ def plot(scores, mean_scores):
     plt.text(len(mean_scores)-1, mean_scores[-1], str(mean_scores[-1]))
     plt.show(block=False)
     plt.pause(.1)
+
+
+def mirror_game_state(game_state: dict) -> (dict, dict, dict):
+    x = copy.deepcopy(game_state)
+    y = copy.deepcopy(game_state)
+    xy = copy.deepcopy(game_state)
+    size_x = game_state['field'].shape[0]
+    size_y = game_state['field'].shape[1]
+
+    x['field'] = np.flipud(game_state['field'])
+    y['field'] = np.fliplr(game_state['field'])
+    xy['field'] = np.flipud(np.fliplr(game_state['field']))
+
+    for i in range(len(game_state['bombs'])):
+        x['bombs'][i] = ((abs(size_x - 1 - game_state['bombs'][i][0][0]), game_state['bombs'][i][0][1]),
+                         game_state['bombs'][i][1])
+        y['bombs'][i] = ((game_state['bombs'][i][0][0], abs(size_y - 1 - game_state['bombs'][i][0][1])),
+                         game_state['bombs'][i][1])
+        xy['bombs'][i] = ((abs(size_x - 1 - game_state['bombs'][i][0][0]),
+                           abs(size_y - 1 - game_state['bombs'][i][0][1])),
+                          game_state['bombs'][i][1])
+
+    x['explosion_map'] = np.flipud(game_state['explosion_map'])
+    y['explosion_map'] = np.fliplr(game_state['explosion_map'])
+    xy['explosion_map'] = np.flipud(np.fliplr(game_state['explosion_map']))
+
+    for i in range(len(game_state['coins'])):
+        x['coins'][i] = (abs(size_x - 1 - game_state['coins'][i][0]), game_state['coins'][i][1])
+        y['coins'][i] = (game_state['coins'][i][0], abs(size_y - 1 - game_state['coins'][i][1]))
+        xy['coins'][i] = (abs(size_x - 1 - game_state['coins'][i][0]), abs(size_y - 1 - game_state['coins'][i][1]))
+
+    x['self'] = (game_state['self'][0], game_state['self'][1], game_state['self'][2],
+                 (abs(size_x - 1 - game_state['self'][3][0]), game_state['self'][3][1]))
+    y['self'] = (game_state['self'][0], game_state['self'][1], game_state['self'][2],
+                 (game_state['self'][3][0], abs(size_y - 1 - game_state['self'][3][1])))
+    xy['self'] = (game_state['self'][0], game_state['self'][1], game_state['self'][2],
+                  (abs(size_x - 1 - game_state['self'][3][0]), abs(size_y - 1 - game_state['self'][3][1])))
+
+    for i in range(len(game_state['others'])):
+        x['others'][i] = (game_state['others'][i][0], game_state['others'][i][1], game_state['others'][i][2],
+                          (abs(size_x - 1 - game_state['others'][i][3][0]), game_state['others'][i][3][1]))
+        y['others'][i] = (game_state['others'][i][0], game_state['others'][i][1], game_state['others'][i][2],
+                          (game_state['others'][i][3][0], abs(size_y - 1 - game_state['others'][i][3][1])))
+        xy['others'][i] = (game_state['others'][i][0], game_state['others'][i][1], game_state['others'][i][2],
+                           (abs(size_x - 1 - game_state['others'][i][3][0]),
+                            abs(size_y - 1 - game_state['others'][i][3][1])))
+
+    return x, y, xy
+
+
+def mirror_action(action: str) -> (str, str, str):
+    match action:
+        case 'UP':
+            return 'DOWN', 'UP', 'DOWN'
+        case 'RIGHT':
+            return 'RIGHT', 'LEFT', 'LEFT'
+        case 'DOWN':
+            return 'UP', 'DOWN', 'UP'
+        case 'LEFT':
+            return 'LEFT', 'RIGHT', 'RIGHT'
+        case _:
+            return action, action, action
+
+
+def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
+
+    x = copy.deepcopy(feature_vector)
+    y = copy.deepcopy(feature_vector)
+    xy = copy.deepcopy(feature_vector)
+
+    x[2] = feature_vector[4]
+    xy[2] = feature_vector[4]
+
+    y[3] = feature_vector[5]
+    xy[3] = feature_vector[5]
+
+    x[4] = feature_vector[2]
+    xy[4] = feature_vector[2]
+
+    y[5] = feature_vector[3]
+    xy[5] = feature_vector[3]
+
+    x[8] = feature_vector[10]
+    xy[8] = feature_vector[10]
+
+    y[9] = feature_vector[11]
+    xy[9] = feature_vector[11]
+
+    x[10] = feature_vector[8]
+    xy[10] = feature_vector[8]
+
+    y[11] = feature_vector[9]
+    xy[11] = feature_vector[9]
+
+    x[12] = feature_vector[14]
+    xy[12] = feature_vector[14]
+
+    y[13] = feature_vector[15]
+    xy[13] = feature_vector[15]
+
+    x[14] = feature_vector[12]
+    xy[14] = feature_vector[12]
+
+    y[15] = feature_vector[13]
+    xy[15] = feature_vector[13]
+
+    return x, y, xy
