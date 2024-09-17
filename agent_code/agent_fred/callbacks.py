@@ -88,13 +88,9 @@ def act(self, game_state: dict) -> str:
     self.logger.debug("Querying model for action.")
 
     state = torch.tensor(state, dtype=torch.float)
-    prediction = self.model(state).detach().numpy()
+    prediction = self.model(state)
 
-    # move = torch.argmax(prediction).item()
-    prediction = (prediction-np.min(prediction))/(np.max(prediction)-np.min(prediction))
-    pred_sum = sum(prediction)
-    prediction = prediction / pred_sum
-    move = np.random.choice(range(len(ACTIONS)), p=prediction)
+    move = torch.argmax(prediction).item()
 
     self.logger.debug(f"Predicted move: {ACTIONS[move]}.")
 
