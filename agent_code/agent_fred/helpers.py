@@ -174,8 +174,8 @@ def plot(scores, mean_scores):
     plt.plot(scores)
     plt.plot(mean_scores)
     plt.ylim(ymin=0)
-    plt.text(len(scores)-1, scores[-1], str(scores[-1]))
-    plt.text(len(mean_scores)-1, mean_scores[-1], str(mean_scores[-1]))
+    plt.text(len(scores) - 1, scores[-1], str(scores[-1]))
+    plt.text(len(mean_scores) - 1, mean_scores[-1], str(mean_scores[-1]))
     plt.show(block=False)
     plt.pause(.1)
 
@@ -243,7 +243,6 @@ def mirror_action(action: str) -> (str, str, str):
 
 
 def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
-
     x = copy.deepcopy(feature_vector)
     y = copy.deepcopy(feature_vector)
     xy = copy.deepcopy(feature_vector)
@@ -285,3 +284,45 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
     xy[15] = feature_vector[13]
 
     return x, y, xy
+
+
+def passable(x, y, game_state):
+    return (in_field(x, y, game_state) and game_state['field'][x, y] == 0
+            and (x, y) not in [xy for xy, t in game_state['bombs']]
+            and (x, y) not in [xy for (n, s, b, xy) in game_state['others']])
+
+
+def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
+    """
+    Calculate the distance to the closest coin from the coordinate using BFS.
+    """
+    coins = game_state['coins']
+    if len(coins) == 0:
+        return 0
+
+    # Use BFS to find closest coin that is reachable.
+    tile_queue = deque([(coord[0], coord[1], 0)])
+    visited = np.zeros(game_state['field'].shape)
+    visited[coord[0], coord[1]] = 1
+    while len(tile_queue) > 0:
+        x, y, step = tile_queue.popleft()
+        if any([x == c[0] and y == c[1] for c in coins]):
+            return step
+
+        if passable(x + 1, y, game_state) and visited[x + 1, y] == 0:
+            tile_queue.append((x + 1, y, step + 1))
+            visited[x + 1, y] = 1
+
+        if passable(x - 1, y, game_state) and visited[x - 1, y] == 0:
+            tile_queue.append((x - 1, y, step + 1))
+            visited[x - 1, y] = 1
+
+        if passable(x, y + 1, game_state) and visited[x, y + 1] == 0:
+            tile_queue.append((x, y + 1, step + 1))
+            visited[x, y + 1] = 1
+
+        if passable(x, y - 1, game_state) and visited[x, y - 1] == 0:
+            tile_queue.append((x, y - 1, step + 1))
+            visited[x, y - 1] = 1
+
+    return 10000
