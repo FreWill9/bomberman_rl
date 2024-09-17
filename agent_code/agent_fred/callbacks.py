@@ -81,7 +81,6 @@ def act(self, game_state: dict) -> str:
         # 80%: walk in any direction. 10% wait. 10% bomb.
         return np.random.choice(ACTIONS, p=[.20, .20, .20, .20, .20, .0])
 
-
     state = state_to_features(self, game_state)
     self.logger.info(f"Features: {state}")
 
@@ -383,10 +382,13 @@ def state_to_features(self, game_state: dict) -> np.array:
     self.safety_left = safety(safe_distance(game_state, (self_x - 1, self_y), 5))
 
     # Coins
-    up_coins = coin_score(game_state, self_x, self_y - 1)
-    right_coins = coin_score(game_state, self_x + 1, self_y)
-    down_coins = coin_score(game_state, self_x, self_y + 1)
-    left_coins = coin_score(game_state, self_x - 1, self_y)
+    coin_dist = closest_coin_dist(game_state, (self_x, self_y))
+    coin_dist_up = closest_coin_dist(game_state, (self_x, self_y - 1))
+    coin_dist_right = closest_coin_dist(game_state, (self_x + 1, self_y))
+    coin_dist_down = closest_coin_dist(game_state, (self_x, self_y + 1))
+    coin_dist_left = closest_coin_dist(game_state, (self_x - 1, self_y))
+    coin_closer = [float(coin_dist > dist) for dist in [coin_dist_up, coin_dist_right, coin_dist_down, coin_dist_left]]
+
     # best_val = max(up_coins, right_coins, down_coins, left_coins)
     # convert to binary for which one is best
     # up_coins = float(up_coins == best_val) - 0.0001
@@ -396,7 +398,7 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # Build feature vector
     features = np.array([up, right, down, left,
-                         up_coins, right_coins, down_coins, left_coins,
+                         *coin_closer, # up_coins, right_coins, down_coins, left_coins,
                          #self.safety_stay, self.safety_up, self.safety_right, self.safety_down, self.safety_left,
                          ])
 
