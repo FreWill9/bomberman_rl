@@ -231,6 +231,54 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
 
     return 10000
 
+
+def coin_dist_avg(game_state: dict, coord: (int, int)) -> float:
+    """
+    Calculate the 1/average distance to all reachable coins from x,y.
+    """
+    coins = game_state['coins']
+    if len(coins) == 0:
+        return 0
+
+    # Use BFS to find distance to all coins.
+    tile_queue = deque([(coord[0], coord[1], 0)])
+    visited = np.zeros(game_state['field'].shape)
+    visited[coord[0], coord[1]] = 1
+    dist_sum = 0
+    found = 0
+    while len(tile_queue) > 0 and found < len(coins):
+        x, y, step = tile_queue.popleft()
+        if visited[x, y] == 1:
+            continue
+
+        if any([x == c[0] and y == c[1] for c in coins]):
+            dist_sum += step
+            found += 1
+
+        if passable(x + 1, y, game_state) and visited[x + 1, y] == 0:
+            tile_queue.append((x + 1, y, step + 1))
+            visited[x + 1, y] = 1
+
+        if passable(x - 1, y, game_state) and visited[x - 1, y] == 0:
+            tile_queue.append((x - 1, y, step + 1))
+            visited[x - 1, y] = 1
+
+        if passable(x, y + 1, game_state) and visited[x, y + 1] == 0:
+            tile_queue.append((x, y + 1, step + 1))
+            visited[x, y + 1] = 1
+
+        if passable(x, y - 1, game_state) and visited[x, y - 1] == 0:
+            tile_queue.append((x, y - 1, step + 1))
+            visited[x, y - 1] = 1
+
+    if dist_sum == 0 and found > 0:
+        return 1.0
+    if dist_sum == 0:
+        return 0.0
+
+    return found / dist_sum
+
+
 def coin_score(game_state: dict, x, y) -> float:
     dist = closest_coin_dist(game_state, (x, y)) + 1
     if dist == 10000:
@@ -238,6 +286,7 @@ def coin_score(game_state: dict, x, y) -> float:
     if dist >= 8:
         return 0.05
     return 1 - (dist / 8)
+
 
 def manhattan_dist(x1, y1, x2, y2):
     return abs(x1 - x2) + abs(y1 - y2)
@@ -387,7 +436,17 @@ def state_to_features(self, game_state: dict) -> np.array:
     coin_dist_right = closest_coin_dist(game_state, (self_x + 1, self_y))
     coin_dist_down = closest_coin_dist(game_state, (self_x, self_y + 1))
     coin_dist_left = closest_coin_dist(game_state, (self_x - 1, self_y))
-    coin_closer = [float(coin_dist > dist) for dist in [coin_dist_up, coin_dist_right, coin_dist_down, coin_dist_left]]
+    coin_dists = [coin_dist_up, coin_dist_right, coin_dist_down, coin_dist_left]
+    coin_dists = [1 / (1 + d) for d in coin_dists]
+    #coin_closer = [float(coin_dist > dist) for dist in [coin_dist_up, coin_dist_right, coin_dist_down, coin_dist_left]]
+
+    coin_sum_up = coin_dist_avg(game_state, (self_x, self_y - 1))
+    coin_sum_right = coin_dist_avg(game_state, (self_x + 1, self_y))
+    coin_sum_down = coin_dist_avg(game_state, (self_x, self_y + 1))
+    coin_sum_left = coin_dist_avg(game_state, (self_x - 1, self_y))
+    best = np.argmax([coin_sum_up, coin_sum_right, coin_sum_down, coin_sum_left])
+    coin_sums = [0.0] * 4
+    coin_sums[best] = 1.0
 
     # best_val = max(up_coins, right_coins, down_coins, left_coins)
     # convert to binary for which one is best
@@ -397,8 +456,9 @@ def state_to_features(self, game_state: dict) -> np.array:
     # left_coins = float(left_coins == best_val)
 
     # Build feature vector
-    features = np.array([up, right, down, left,
-                         *coin_closer, # up_coins, right_coins, down_coins, left_coins,
+    features = np.array([# up, right, down, left,
+                         #*coin_dists,  # up_coins, right_coins, down_coins, left_coins,
+                         *coin_sums,
                          #self.safety_stay, self.safety_up, self.safety_right, self.safety_down, self.safety_left,
                          ])
 

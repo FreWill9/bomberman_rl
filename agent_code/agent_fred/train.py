@@ -72,7 +72,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.model = Linear_QNet(8, 64, 64, 6).to(device)
+    self.model = Linear_QNet(4, 64, 64, 6).to(device)
     self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
 
