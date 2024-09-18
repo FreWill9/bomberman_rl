@@ -318,6 +318,47 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
     return 10000
 
 
+def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), direction: (int, int)) -> int:
+    """
+    Get the highest explosion score for any tile reachable in 5 steps in the specified direction.
+    """
+    coins = game_state['coins']
+    if len(coins) == 0:
+        return 0
+
+    # Use BFS
+    tile_queue = deque([(coord[0] + direction[0], coord[1] + direction[1], 1)])
+    visited = np.zeros(game_state['field'].shape)
+    visited[coord[0], coord[1]] = 1
+    visited[coord[0] + direction[0], coord[1] + direction[1]] = 1
+    best_score = 0
+    while len(tile_queue) > 0:
+        x, y, step = tile_queue.popleft()
+
+        best_score = max(best_score, explosion_score(game_state, bomb_map, x, y))
+
+        if step >= 5:
+            continue
+
+        if passable(x + 1, y, game_state) and visited[x + 1, y] == 0:
+            tile_queue.append((x + 1, y, step + 1))
+            visited[x + 1, y] = 1
+
+        if passable(x - 1, y, game_state) and visited[x - 1, y] == 0:
+            tile_queue.append((x - 1, y, step + 1))
+            visited[x - 1, y] = 1
+
+        if passable(x, y + 1, game_state) and visited[x, y + 1] == 0:
+            tile_queue.append((x, y + 1, step + 1))
+            visited[x, y + 1] = 1
+
+        if passable(x, y - 1, game_state) and visited[x, y - 1] == 0:
+            tile_queue.append((x, y - 1, step + 1))
+            visited[x, y - 1] = 1
+
+    return best_score
+
+
 def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
     crate_score = 0
     for i in range(1, 4):
