@@ -23,7 +23,7 @@ Memory = namedtuple('Memory',
 
 # Hyperparameters -- DO modify
 MAX_MEMORY = 40_000
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 LR = 0.001
 
 plot_maxlen = 100
@@ -132,7 +132,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # mirror feature vectors and actions on x, y and both axes:
     x_old_features, y_old_features, xy_old_features = mirror_feature_vector(state_old_features)
     x_new_features, y_new_features, xy_new_features = mirror_feature_vector(state_new_features)
-    x_act, y_act, xy_act = mirror_action(self_action)
+    y_act, x_act, xy_act = mirror_action(self_action)
 
     #encode_action
     action_enc = encode_action(self_action)
@@ -148,15 +148,15 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
                       f"y: {y_old_features, y_act_enc, reward, y_new_features} \n"
                       f"xy: {xy_old_features, xy_act_enc, reward, xy_new_features} \n")"""
     self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
-    # self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
-    # self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
-    # self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
+    self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
+    self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
+    self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
 
     # train short term memory
     self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
-    # self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
-    # self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
-    # self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
+    self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
+    self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
+    self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -184,13 +184,12 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         events.append(PERFECT_COIN_HEAVEN)
 
     reward = reward_from_events(self, events, last_game_state['self'][1])
-
     # augment the dataset
     # state to features not needed
     last_state_features = self.state
     # mirror game-states and actions on x, y and both axes:
     x_last_features, y_last_features, xy_last_features = mirror_feature_vector(last_state_features)
-    x_act, y_act, xy_act = mirror_action(last_action)
+    y_act, x_act, xy_act = mirror_action(last_action)
 
     # encode actions
     last_action_enc = encode_action(last_action)
@@ -200,15 +199,15 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # remember Todo: last state passed twice as parameter because easier with train step... is this a problem?
     self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
-    # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
-    # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
-    # self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
+    self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
+    self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
+    self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
 
     # train short term memory
     self.trainer.train_step(last_state_features, last_action_enc, reward, last_state_features, True)
-    # self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
-    # self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
-    # self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
+    self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
+    self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
+    self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
 
     # train long term memory
     if len(self.memory) > BATCH_SIZE:

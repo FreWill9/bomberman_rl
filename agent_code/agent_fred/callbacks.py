@@ -22,7 +22,7 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 400
+EPS_DECAY = 25
 
 
 def setup(self):
@@ -51,7 +51,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = Linear_QNet(20, 128, 128, 6).to(device)
+        self.model = Linear_QNet(20, 512, 512, 6).to(device)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
