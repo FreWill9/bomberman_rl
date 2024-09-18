@@ -316,3 +316,37 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
             visited[x, y - 1] = 1
 
     return 10000
+
+
+def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
+    crate_score = 0
+    for i in range(1, 4):
+        if in_field(x + i, y, game_state) and game_state['field'][x + i, y] != -1:
+            if game_state['field'][x + i, y] == 1 and bomb_map[x + i, y] == 100 and \
+              game_state['explosion_map'][x + i, y] == 0:
+                crate_score += 1
+        else:
+            break
+    for i in range(1, 4):
+        if in_field(x - i, y, game_state) and game_state['field'][x - i, y] != -1:
+            if game_state['field'][x - i, y] == 1 and bomb_map[x - i, y] == 100 and \
+              game_state['explosion_map'][x - i, y] == 0:
+                crate_score += 1
+        else:
+            break
+    for i in range(1, 4):
+        if in_field(x, y + i, game_state) and game_state['field'][x, y + i] != -1:
+            if game_state['field'][x, y + i] == 1 and bomb_map[x, y + i] == 100 and \
+              game_state['explosion_map'][x, y + i] == 0:
+                crate_score += 1
+        else:
+            break
+    for i in range(1, 4):
+        if in_field(x, y - i, game_state) and game_state['field'][x, y - i] != -1:
+            if game_state['field'][x, y - i] == 1 and bomb_map[x, y - i] == 100 and \
+              game_state['explosion_map'][x, y - i] == 0:
+                crate_score += 1
+        else:
+            break
+
+    return crate_score / 10
