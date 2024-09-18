@@ -243,45 +243,35 @@ def mirror_action(action: str) -> (str, str, str):
 
 
 def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
-    x = copy.deepcopy(feature_vector)
-    y = copy.deepcopy(feature_vector)
-    xy = copy.deepcopy(feature_vector)
+    (in_danger, bomb_avail, up, right, down, left, touching_crate, first_step,
+     shortest_way_coin_up, shortest_way_coin_right,
+     shortest_way_coin_down, shortest_way_coin_left,
+     shortest_way_crate_up, shortest_way_crate_right,
+     shortest_way_crate_down, shortest_way_crate_left,
+     shortest_way_safety_up, shortest_way_safety_right,
+     shortest_way_safety_down, shortest_way_safety_left) = tuple(feature_vector)
 
-    x[2] = feature_vector[4]
-    xy[2] = feature_vector[4]
-
-    y[3] = feature_vector[5]
-    xy[3] = feature_vector[5]
-
-    x[4] = feature_vector[2]
-    xy[4] = feature_vector[2]
-
-    y[5] = feature_vector[3]
-    xy[5] = feature_vector[3]
-
-    x[8] = feature_vector[10]
-    xy[8] = feature_vector[10]
-
-    y[9] = feature_vector[11]
-    xy[9] = feature_vector[11]
-
-    x[10] = feature_vector[8]
-    xy[10] = feature_vector[8]
-
-    y[11] = feature_vector[9]
-    xy[11] = feature_vector[9]
-
-    x[12] = feature_vector[14]
-    xy[12] = feature_vector[14]
-
-    y[13] = feature_vector[15]
-    xy[13] = feature_vector[15]
-
-    x[14] = feature_vector[12]
-    xy[14] = feature_vector[12]
-
-    y[15] = feature_vector[13]
-    xy[15] = feature_vector[13]
+    x = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step,
+                  shortest_way_coin_down, shortest_way_coin_right,
+                  shortest_way_coin_up, shortest_way_coin_left,
+                  shortest_way_crate_down, shortest_way_crate_right,
+                  shortest_way_crate_up, shortest_way_crate_left,
+                  shortest_way_safety_down, shortest_way_safety_right,
+                  shortest_way_safety_up, shortest_way_safety_left])
+    y = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step,
+                  shortest_way_coin_up, shortest_way_coin_left,
+                  shortest_way_coin_down, shortest_way_coin_right,
+                  shortest_way_crate_up, shortest_way_crate_left,
+                  shortest_way_crate_down, shortest_way_crate_right,
+                  shortest_way_safety_up, shortest_way_safety_left,
+                  shortest_way_safety_down, shortest_way_safety_right])
+    xy = np.array([in_danger, bomb_avail, down, left, up, right, touching_crate, first_step,
+                   shortest_way_coin_down, shortest_way_coin_left,
+                   shortest_way_coin_up, shortest_way_coin_right,
+                   shortest_way_crate_down, shortest_way_crate_left,
+                   shortest_way_crate_up, shortest_way_crate_right,
+                   shortest_way_safety_down, shortest_way_safety_left,
+                   shortest_way_safety_up, shortest_way_safety_right])
 
     return x, y, xy
 
