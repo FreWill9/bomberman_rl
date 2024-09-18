@@ -27,9 +27,6 @@ BATCH_SIZE = 64
 LR = 0.001
 
 plot_maxlen = 100
-plot_scores = []
-plot_mean_scores = []
-total_score = 0
 plt.style.use('Solarize_Light2')
 
 
@@ -45,11 +42,10 @@ def setup_training(self):
     # (s, a, r, s_new)
     # self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
 
+    self.recent_scores = deque(maxlen=plot_maxlen)
     self.plot_scores = []
     self.plot_mean_scores = []
     self.total_score = 0
-    self.plot_mean_history = deque(maxlen=plot_maxlen)
-    self.n_games = 0
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
@@ -121,6 +117,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     elif len(self.coordinate_history) == 1 and self_action != 'WAIT':
         events.append(NOT_STEP_ONE_BOMB)
 
+    # Good Bombs destroy crates or put opps in danger
     if self.touching_crate and self_action == 'BOMB':
         events.append(GOOD_BOMB)
     elif self_action == 'BOMB':
@@ -226,11 +223,10 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         pickle.dump(self.model, file)
 
     # plot results
-    self.n_games += 1
     self.plot_scores.append(score)
-    self.total_score += score
-    mean_score = self.total_score / self.n_games
-    self.plot_mean_scores.append(mean_score)
+    self.recent_scores.append(score)
+    recent_mean = sum(self.recent_scores) / len(self.recent_scores)
+    self.plot_mean_scores.append(recent_mean)
     plt.ion()
     plot(self.plot_scores, self.plot_mean_scores)
 
@@ -288,6 +284,32 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.INVALID_ACTION: -1,
         e.WAITED: -0,
         e.SURVIVED_ROUND: +0,
+        e.BOMB_DROPPED: +0,
+        e.CRATE_DESTROYED: +1,
+        e.COIN_FOUND: +1,
+        e.BOMB_EXPLODED: +0,
+        STEP_ONE_BOMB: -0,
+        NOT_STEP_ONE_BOMB: +0,
+        GOOD_BOMB: +1,
+        BAD_BOMB: -1,
+        LOOP: 0,
+        NO_LOOP: +0,
+        SHORTEST_WAY_COIN: +1,
+        NOT_SHORTEST_WAY_COIN: -1,
+        SHORTEST_WAY_SAFETY: +1,
+        NOT_SHORTEST_WAY_SAFETY: -1
+    }
+
+    # Stage 3
+    game_rewards_stage_2 = {
+        e.COIN_COLLECTED: +1,
+        e.KILLED_SELF: -1,
+        e.GOT_KILLED: -1,
+        e.KILLED_OPPONENT: +3,
+        e.OPPONENT_ELIMINATED: +2,
+        e.INVALID_ACTION: -1,
+        e.WAITED: -0,
+        e.SURVIVED_ROUND: +1,
         e.BOMB_DROPPED: +0,
         e.CRATE_DESTROYED: +1,
         e.COIN_FOUND: +1,

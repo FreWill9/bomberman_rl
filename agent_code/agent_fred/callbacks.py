@@ -258,11 +258,10 @@ def state_to_features(self, game_state: dict) -> np.array:
     dir_safety = look_for_targets(escape_space, (self_x, self_y), safe_tiles)
 
     # Assign shortest way coordinates to features
-    if in_danger == 0.0:
-        self.shortest_way_coin, shortest_way_coin_up, shortest_way_coin_right, \
-            shortest_way_coin_down, shortest_way_coin_left = coord_to_dir(self_x, self_y, dir_coin)
+    self.shortest_way_coin, shortest_way_coin_up, shortest_way_coin_right, \
+        shortest_way_coin_down, shortest_way_coin_left = coord_to_dir(self_x, self_y, dir_coin)
 
-    if in_danger == 0.0 and self.shortest_way_coin == "None" and self.touching_crate == 0:
+    if self.touching_crate == 0:
         self.shortest_way_crate, shortest_way_crate_up, shortest_way_crate_right, \
             shortest_way_crate_down, shortest_way_crate_left = coord_to_dir(self_x, self_y, dir_crate)
 
