@@ -20,6 +20,10 @@ device = torch.device(
     'cpu')
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
+# up: -y
+# right: +x
+# down: +y
+# left: -x
 
 EPS_START = 0.9
 EPS_END = 0.05
@@ -200,10 +204,10 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # Up, Right, Down, Left, Touching_crate
     self.touching_crate = 0
-    up = tile_value(game_state, (self_x - 1, self_y), self.coordinate_history)
-    right = tile_value(game_state, (self_x, self_y + 1), self.coordinate_history)
-    down = tile_value(game_state, (self_x + 1, self_y), self.coordinate_history)
-    left = tile_value(game_state, (self_x, self_y - 1), self.coordinate_history)
+    up = tile_value(game_state, (self_x, self_y - 1), self.coordinate_history)
+    right = tile_value(game_state, (self_x + 1, self_y), self.coordinate_history)
+    down = tile_value(game_state, (self_x, self_y + 1), self.coordinate_history)
+    left = tile_value(game_state, (self_x - 1, self_y), self.coordinate_history)
     if arena[self_x - 1, self_y] == 1 or arena[self_x + 1, self_y] == 1 or \
             arena[self_x, self_y - 1] == 1 or arena[self_x, self_y + 1] == 1:
         self.touching_crate = 1
@@ -271,11 +275,12 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # find best explosion direction
     max_steps = self.bomb_cooldown + 2
-    explosion_score_up = best_explosion_score(game_state, bomb_map, (self_x, self_y), (-1, 0), max_steps)
-    explosion_score_right = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, 1), max_steps)
-    explosion_score_down = best_explosion_score(game_state, bomb_map, (self_x, self_y), (1, 0), max_steps)
-    explosion_score_left = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, -1), max_steps)
+    explosion_score_up = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, -1), max_steps)
+    explosion_score_right = best_explosion_score(game_state, bomb_map, (self_x, self_y), (1, 0), max_steps)
+    explosion_score_down = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, 1), max_steps)
+    explosion_score_left = best_explosion_score(game_state, bomb_map, (self_x, self_y), (-1, 0), max_steps)
     explosion_score_stay = explosion_score(game_state, bomb_map, self_x, self_y)
+
     explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
                         explosion_score_stay]
     best_explosion = np.argmax(explosion_scores)
@@ -326,9 +331,9 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # For debugging
     self.logger.debug(f"\n"
-                      f"Proposed way coin: {transpose_action(self.shortest_way_coin)} \n"
-                      f"Proposed way crate: {transpose_action(self.shortest_way_crate)} \n"
-                      f"Proposed way safety: {transpose_action(self.shortest_way_safety)} \n")
+                      f"Proposed way coin: {self.shortest_way_coin} \n"
+                      f"Proposed way crate: {self.shortest_way_crate} \n"
+                      f"Proposed way safety: {self.shortest_way_safety} \n")
 
     return test_vector
 

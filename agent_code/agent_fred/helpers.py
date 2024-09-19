@@ -121,20 +121,6 @@ def build_bomb_map(game_state: dict):
     return bomb_map
 
 
-def transpose_action(action: str) -> str:
-    match action:
-        case "UP":
-            return "LEFT"
-        case "RIGHT":
-            return "DOWN"
-        case "DOWN":
-            return "RIGHT"
-        case "LEFT":
-            return "UP"
-        case _:
-            return action
-
-
 def encode_action(action: str) -> float:
     match action:
         case 'UP':
@@ -154,13 +140,13 @@ def encode_action(action: str) -> float:
 def coord_to_dir(x, y, coord_target) -> (str, float, float, float, float):
     if coord_target is None or (x, y) == coord_target:
         return 'None', 0.0, 0.0, 0.0, 0.0
-    if coord_target == (x - 1, y):
-        return 'UP', 1.0, 0.0, 0.0, 0.0
-    if coord_target == (x, y + 1):
-        return 'RIGHT', 0.0, 1.0, 0.0, 0.0
-    if coord_target == (x + 1, y):
-        return 'DOWN', 0.0, 0.0, 1.0, 0.0
     if coord_target == (x, y - 1):
+        return 'UP', 1.0, 0.0, 0.0, 0.0
+    if coord_target == (x + 1, y):
+        return 'RIGHT', 0.0, 1.0, 0.0, 0.0
+    if coord_target == (x, y + 1):
+        return 'DOWN', 0.0, 0.0, 1.0, 0.0
+    if coord_target == (x - 1, y):
         return 'LEFT', 0.0, 0.0, 0.0, 1.0
 
 
@@ -231,13 +217,13 @@ def mirror_game_state(game_state: dict) -> (dict, dict, dict):
 def mirror_action(action: str) -> (str, str, str):
     match action:
         case 'UP':
-            return 'DOWN', 'UP', 'DOWN'
+            return 'UP', 'DOWN', 'DOWN'
         case 'RIGHT':
-            return 'RIGHT', 'LEFT', 'LEFT'
+            return 'LEFT', 'RIGHT', 'LEFT'
         case 'DOWN':
-            return 'UP', 'DOWN', 'UP'
+            return 'DOWN', 'UP', 'UP'
         case 'LEFT':
-            return 'LEFT', 'RIGHT', 'RIGHT'
+            return 'RIGHT', 'LEFT', 'RIGHT'
         case _:
             return action, action, action
 
@@ -253,16 +239,7 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
      explosion_score_up, explosion_score_right,
      explosion_score_down, explosion_score_left, explosion_score_stay) = tuple(feature_vector)
 
-    x = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step,
-                  shortest_way_coin_down, shortest_way_coin_right,
-                  shortest_way_coin_up, shortest_way_coin_left,
-                  # shortest_way_crate_down, shortest_way_crate_right,
-                  # shortest_way_crate_up, shortest_way_crate_left,
-                  shortest_way_safety_down, shortest_way_safety_right,
-                  shortest_way_safety_up, shortest_way_safety_left,
-                  explosion_score_down, explosion_score_right,
-                  explosion_score_up, explosion_score_left, explosion_score_stay])
-    y = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step,
+    x = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step,
                   shortest_way_coin_up, shortest_way_coin_left,
                   shortest_way_coin_down, shortest_way_coin_right,
                   # shortest_way_crate_up, shortest_way_crate_left,
@@ -271,6 +248,15 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
                   shortest_way_safety_down, shortest_way_safety_right,
                   explosion_score_up, explosion_score_left,
                   explosion_score_down, explosion_score_right, explosion_score_stay])
+    y = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step,
+                  shortest_way_coin_down, shortest_way_coin_right,
+                  shortest_way_coin_up, shortest_way_coin_left,
+                  # shortest_way_crate_down, shortest_way_crate_right,
+                  # shortest_way_crate_up, shortest_way_crate_left,
+                  shortest_way_safety_down, shortest_way_safety_right,
+                  shortest_way_safety_up, shortest_way_safety_left,
+                  explosion_score_down, explosion_score_right,
+                  explosion_score_up, explosion_score_left, explosion_score_stay])
     xy = np.array([in_danger, bomb_avail, down, left, up, right, touching_crate, first_step,
                    shortest_way_coin_down, shortest_way_coin_left,
                    shortest_way_coin_up, shortest_way_coin_right,
