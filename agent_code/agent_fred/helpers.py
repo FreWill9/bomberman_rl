@@ -246,32 +246,40 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
     (in_danger, bomb_avail, up, right, down, left, touching_crate, first_step,
      shortest_way_coin_up, shortest_way_coin_right,
      shortest_way_coin_down, shortest_way_coin_left,
-     shortest_way_crate_up, shortest_way_crate_right,
-     shortest_way_crate_down, shortest_way_crate_left,
+     # shortest_way_crate_up, shortest_way_crate_right,
+     # shortest_way_crate_down, shortest_way_crate_left,
      shortest_way_safety_up, shortest_way_safety_right,
-     shortest_way_safety_down, shortest_way_safety_left) = tuple(feature_vector)
+     shortest_way_safety_down, shortest_way_safety_left,
+     explosion_score_up, explosion_score_right,
+     explosion_score_down, explosion_score_left, explosion_score_stay) = tuple(feature_vector)
 
     x = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step,
                   shortest_way_coin_down, shortest_way_coin_right,
                   shortest_way_coin_up, shortest_way_coin_left,
-                  shortest_way_crate_down, shortest_way_crate_right,
-                  shortest_way_crate_up, shortest_way_crate_left,
+                  # shortest_way_crate_down, shortest_way_crate_right,
+                  # shortest_way_crate_up, shortest_way_crate_left,
                   shortest_way_safety_down, shortest_way_safety_right,
-                  shortest_way_safety_up, shortest_way_safety_left])
+                  shortest_way_safety_up, shortest_way_safety_left,
+                  explosion_score_down, explosion_score_right,
+                  explosion_score_up, explosion_score_left, explosion_score_stay])
     y = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step,
                   shortest_way_coin_up, shortest_way_coin_left,
                   shortest_way_coin_down, shortest_way_coin_right,
-                  shortest_way_crate_up, shortest_way_crate_left,
-                  shortest_way_crate_down, shortest_way_crate_right,
+                  # shortest_way_crate_up, shortest_way_crate_left,
+                  # shortest_way_crate_down, shortest_way_crate_right,
                   shortest_way_safety_up, shortest_way_safety_left,
-                  shortest_way_safety_down, shortest_way_safety_right])
+                  shortest_way_safety_down, shortest_way_safety_right,
+                  explosion_score_up, explosion_score_left,
+                  explosion_score_down, explosion_score_right, explosion_score_stay])
     xy = np.array([in_danger, bomb_avail, down, left, up, right, touching_crate, first_step,
                    shortest_way_coin_down, shortest_way_coin_left,
                    shortest_way_coin_up, shortest_way_coin_right,
-                   shortest_way_crate_down, shortest_way_crate_left,
-                   shortest_way_crate_up, shortest_way_crate_right,
+                   # shortest_way_crate_down, shortest_way_crate_left,
+                   # shortest_way_crate_up, shortest_way_crate_right,
                    shortest_way_safety_down, shortest_way_safety_left,
-                   shortest_way_safety_up, shortest_way_safety_right])
+                   shortest_way_safety_up, shortest_way_safety_right,
+                   explosion_score_down, explosion_score_left,
+                   explosion_score_up, explosion_score_right, explosion_score_stay])
 
     return x, y, xy
 
@@ -318,9 +326,9 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
     return 10000
 
 
-def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), direction: (int, int)) -> int:
+def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), direction: (int, int), max_step: int) -> int:
     """
-    Get the highest explosion score for any tile reachable in 5 steps in the specified direction.
+    Get the highest explosion score for any tile reachable in max_step steps in the specified direction.
     """
     coins = game_state['coins']
     if len(coins) == 0:
@@ -337,7 +345,7 @@ def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), directio
 
         best_score = max(best_score, explosion_score(game_state, bomb_map, x, y))
 
-        if step >= 5:
+        if step >= max_step:
             continue
 
         if passable(x + 1, y, game_state) and visited[x + 1, y] == 0:
