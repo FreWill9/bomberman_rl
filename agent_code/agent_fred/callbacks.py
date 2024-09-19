@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, transpose_action, best_explosion_score, \
+from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, best_explosion_score, \
     explosion_score
 
 # if GPU is to be used
@@ -29,7 +29,7 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 25
 
-FORCE_BOMBS = False
+FORCE_BOMBS = True
 
 
 def setup(self):

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from .callbacks import state_to_features, QTrainer
-from .helpers import transpose_action, encode_action, plot, mirror_game_state, mirror_action, mirror_feature_vector
+from .helpers import encode_action, plot, mirror_game_state, mirror_action, mirror_feature_vector
 from .custom_events import *
 
 # if GPU is to be used
