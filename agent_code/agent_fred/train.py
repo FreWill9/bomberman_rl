@@ -5,7 +5,6 @@ import events as e
 import random
 import matplotlib.pyplot as plt
 import torch
-import time
 
 from .callbacks import state_to_features, QTrainer
 from .helpers import transpose_action, encode_action, plot, mirror_game_state, mirror_action, mirror_feature_vector
@@ -127,7 +126,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
 
     # augment the dataset
     # state to features is non-deterministic, calling multiple times can cause problems
-    state_old_features = self.state
+    state_old_features = self.features
     state_new_features = state_to_features(self, new_game_state)
     # mirror feature vectors and actions on x, y and both axes:
     x_old_features, y_old_features, xy_old_features = mirror_feature_vector(state_old_features)
@@ -186,7 +185,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     reward = reward_from_events(self, events, last_game_state['self'][1])
     # augment the dataset
     # state to features not needed
-    last_state_features = self.state
+    last_state_features = self.features
     # mirror game-states and actions on x, y and both axes:
     x_last_features, y_last_features, xy_last_features = mirror_feature_vector(last_state_features)
     y_act, x_act, xy_act = mirror_action(last_action)

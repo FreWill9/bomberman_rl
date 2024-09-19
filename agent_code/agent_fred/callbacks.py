@@ -10,7 +10,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, transpose_action, best_explosion_score, explosion_score
+from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, transpose_action, best_explosion_score, \
+    explosion_score
 
 # if GPU is to be used
 device = torch.device(
@@ -25,6 +26,7 @@ EPS_END = 0.05
 EPS_DECAY = 25
 
 FORCE_BOMBS = False
+
 
 def setup(self):
     """
@@ -46,7 +48,6 @@ def setup(self):
     self.shortest_way_crate = "None"
     self.shortest_way_safety = "None"
     self.steps = 0
-    self.counter = 0
     self.touching_crate = 0
     self.bomb_cooldown = 0
 
@@ -70,7 +71,7 @@ def act(self, game_state: dict) -> str:
     :return: The action to take as a string.
     """
     self.bomb_cooldown = max(0, self.bomb_cooldown - 1)
-    self.state = state_to_features(self, game_state)
+    self.features = state_to_features(self, game_state)
     self.step = game_state['step']
     self.x, self.y = game_state['self'][3]
 
@@ -102,8 +103,8 @@ def choose_action(self, game_state: dict) -> str:
 
     self.logger.debug("Querying model for action.")
 
-    state = torch.tensor(self.state, dtype=torch.float)
-    prediction = self.model(state)
+    features = torch.tensor(self.features, dtype=torch.float)
+    prediction = self.model(features)
     action = ACTIONS[torch.argmax(prediction).item()]
 
     self.logger.debug(f"Chose action {action}")
@@ -122,6 +123,7 @@ def state_to_features(self, game_state: dict) -> np.array:
     which is a dictionary. Consult 'get_state_for_agent' in environment.py to see
     what it contains.
 
+    :param self: The same object that is passed to all of your callbacks.
     :param game_state:  A dictionary describing the current game board.
     :return: np.array
     """
