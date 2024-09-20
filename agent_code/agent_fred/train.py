@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from .callbacks import state_to_features, QTrainer
-from .helpers import encode_action, plot, mirror_game_state, mirror_action, mirror_feature_vector
+from .helpers import encode_action, plot, mirror_action, mirror_feature_vector
 from .custom_events import *
 from .model import QNet, DQN, DQN2
 
@@ -86,6 +86,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     shortest_way_coin = self.shortest_way_coin
     shortest_way_crate = self.shortest_way_crate
     shortest_way_safety = self.shortest_way_safety
+    shortest_way_trap = self.shortest_way_trap
 
     # Taking the shortest path to the next coin
     if shortest_way_coin == "None" or self.shortest_way_safety != 'None':
@@ -111,6 +112,14 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     else:
         events.append(NOT_SHORTEST_WAY_SAFETY)
 
+    # Taking the shortest path to trap an opp
+    if shortest_way_trap == "None" or self.shortest_way_safety != 'None':
+        pass
+    elif self_action == shortest_way_trap:
+        events.append(SHORTEST_WAY_TRAP)
+    else:
+        events.append(NOT_SHORTEST_WAY_TRAP)
+
     # Bomb on spawn point has high prob of no escape
     if len(self.coordinate_history) == 1 and self_action == 'BOMB':
         events.append(STEP_ONE_BOMB)
@@ -118,10 +127,18 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_STEP_ONE_BOMB)
 
     # Good Bombs destroy crates or put opps in danger
-    if self_action == 'BOMB' and self.shortest_way_crate == 'BOMB':
+    if old_game_state['self'][2]:
+        pass
+    elif self_action == 'BOMB' and self.shortest_way_crate == 'BOMB':
         events.append(GOOD_BOMB)
     elif self_action == 'BOMB':
         events.append(BAD_BOMB)
+
+    # Reward for trapping opp
+    if self.bomb_for_trap == 1 and self_action == 'BOMB':
+        events.append(TRAP)
+    elif self.bomb_for_trap == 1 and self_action != 'BOMB':
+        events.append(MISSED_TRAP)
 
     reward = reward_from_events(self, events, new_game_state['self'][1])
 
@@ -134,19 +151,13 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     x_new_features, y_new_features, xy_new_features = mirror_feature_vector(state_new_features)
     x_act, y_act, xy_act = mirror_action(self_action)
 
-    #encode_action
+    # encode_action
     action_enc = encode_action(self_action)
     x_act_enc = encode_action(x_act)
     y_act_enc = encode_action(y_act)
     xy_act_enc = encode_action(xy_act)
 
     # remember
-    # For debugging
-    """self.logger.debug(f"remembered feature vectors\n"
-                      f"0: {state_old_features, action_enc, reward, state_new_features} \n"
-                      f"x: {x_old_features, x_act_enc, reward, x_new_features} \n"
-                      f"y: {y_old_features, y_act_enc, reward, y_new_features} \n"
-                      f"xy: {xy_old_features, xy_act_enc, reward, xy_new_features} \n")"""
     # self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
     # self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
     # self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
@@ -192,7 +203,18 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     if score >= 49:
         events.append(PERFECT_COIN_HEAVEN)
 
+    match self.placement:
+        case 1:
+            events.append("FIRST")
+        case 2:
+            events.append("SECOND")
+        case 3:
+            events.append("THIRD")
+        case 4:
+            events.append("FOURTH")
+
     reward = reward_from_events(self, events, last_game_state['self'][1])
+
     # augment the dataset
     # state to features not needed
     last_state_features = self.features
@@ -206,7 +228,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     y_act_enc = encode_action(y_act)
     xy_act_enc = encode_action(xy_act)
 
-    # remember Todo: last state passed twice as parameter because easier with train step... is this a problem?
+    # remember
     # self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
     # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
     # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
@@ -218,7 +240,6 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.trainer.train(y_last_features, y_act_enc, reward, y_last_features, True)
     self.trainer.train(xy_last_features, xy_act_enc, reward, xy_last_features, True)
 
-
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
         pickle.dump(self.model, file)
@@ -226,8 +247,8 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     # plot results
     self.plot_scores.append(score)
     self.recent_scores.append(score)
-    recent_mean = sum(self.recent_scores) / len(self.recent_scores)
-    self.plot_mean_scores.append(recent_mean)
+    recent_mean_scores = sum(self.recent_scores) / len(self.recent_scores)
+    self.plot_mean_scores.append(recent_mean_scores)
     plt.ion()
     plot(self.plot_scores, self.plot_mean_scores)
 
@@ -245,13 +266,7 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.KILLED_SELF: -1,
         e.INVALID_ACTION: -1,
         e.WAITED: -1,
-        e.SURVIVED_ROUND: +0,
         e.BOMB_DROPPED: -1,
-        LOOP: 0,
-        NO_LOOP: 0,
-        HIGH_SCORING_GAME: +0,
-        PERFECT_COIN_HEAVEN: +0,
-        LOW_SCORING_GAME: -0,
         SHORTEST_WAY_COIN: +1,
         NOT_SHORTEST_WAY_COIN: -1,
         SHORTEST_WAY_SAFETY: +1,
@@ -264,14 +279,8 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.COIN_COLLECTED: +1,
         e.KILLED_SELF: -1,
         e.INVALID_ACTION: -1,
-        e.WAITED: -0,
-        e.SURVIVED_ROUND: +0,
-        e.BOMB_DROPPED: +0,
         LOOP: -1,
         NO_LOOP: +1,
-        HIGH_SCORING_GAME: +0,
-        PERFECT_COIN_HEAVEN: +0,
-        LOW_SCORING_GAME: -0,
         SHORTEST_WAY_COIN: +1,
         NOT_SHORTEST_WAY_COIN: -1,
         SHORTEST_WAY_SAFETY: +1,
@@ -297,34 +306,33 @@ def reward_from_events(self, events: List[str], score) -> int:
         NO_LOOP: +0,
         SHORTEST_WAY_COIN: +1,
         NOT_SHORTEST_WAY_COIN: -1,
+        SHORTEST_WAY_CRATE: +2,
+        NOT_SHORTEST_WAY_CRATE: -1,
         SHORTEST_WAY_SAFETY: +1,
         NOT_SHORTEST_WAY_SAFETY: -1
     }
 
     # Stage 3
-    game_rewards_stage_2 = {
+    game_rewards_stage_3 = {
         e.COIN_COLLECTED: +1,
         e.KILLED_SELF: -1,
         e.GOT_KILLED: -1,
         e.KILLED_OPPONENT: +3,
         e.OPPONENT_ELIMINATED: +2,
         e.INVALID_ACTION: -1,
-        e.WAITED: -0,
         e.SURVIVED_ROUND: +1,
-        e.BOMB_DROPPED: +0,
         e.CRATE_DESTROYED: +1,
         e.COIN_FOUND: +1,
-        e.BOMB_EXPLODED: +0,
-        STEP_ONE_BOMB: -0,
-        NOT_STEP_ONE_BOMB: +0,
-        GOOD_BOMB: +5,
-        BAD_BOMB: -5,
-        LOOP: 0,
-        NO_LOOP: +0,
+        GOOD_BOMB: +1,
+        BAD_BOMB: -1,
+        TRAP: +10,
+        MISSED_TRAP: -10,
         SHORTEST_WAY_COIN: +1,
-        NOT_SHORTEST_WAY_COIN: -1,
+        NOT_SHORTEST_WAY_COIN: 0,
         SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1
+        NOT_SHORTEST_WAY_SAFETY: -1,
+        SHORTEST_WAY_TRAP: +2,
+        NOT_SHORTEST_WAY_TRAP: -1,
     }
 
     reward_sum = 0
