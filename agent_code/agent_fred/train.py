@@ -9,6 +9,7 @@ import torch
 from .callbacks import state_to_features, QTrainer
 from .helpers import encode_action, plot, mirror_game_state, mirror_action, mirror_feature_vector
 from .custom_events import *
+from .model import QNet, DQN, DQN2
 
 # if GPU is to be used
 device = torch.device(
@@ -48,7 +49,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
+    self.trainer = DQN2(self.model, lr=LR, gamma=self.gamma, learning_rate=0.7, batch_size=BATCH_SIZE, max_memory=MAX_MEMORY)
 
 
 def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]):
@@ -146,26 +147,26 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
                       f"x: {x_old_features, x_act_enc, reward, x_new_features} \n"
                       f"y: {y_old_features, y_act_enc, reward, y_new_features} \n"
                       f"xy: {xy_old_features, xy_act_enc, reward, xy_new_features} \n")"""
-    self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
-    self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
-    self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
-    self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
+    # self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
+    # self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
+    # self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
+    # self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
 
     # train short term memory
-    # self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
-    # self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
-    # self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
-    # self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
+    self.trainer.train(state_old_features, action_enc, reward, state_new_features, False)
+    self.trainer.train(x_old_features, x_act_enc, reward, x_new_features, False)
+    self.trainer.train(y_old_features, y_act_enc, reward, y_new_features, False)
+    self.trainer.train(xy_old_features, xy_act_enc, reward, xy_new_features, False)
 
-    if self.step % 4 == 0:
-        # train long term memory
-        if len(self.memory) > BATCH_SIZE:
-            mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
-        else:
-            mini_sample = self.memory
-
-        states, actions, rewards, next_states, dones = zip(*mini_sample)
-        self.trainer.train_step(states, actions, rewards, next_states, dones)
+    # if self.step % 4 == 0:
+    #     # train long term memory
+    #     if len(self.memory) > BATCH_SIZE:
+    #         mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
+    #     else:
+    #         mini_sample = self.memory
+    #
+    #     states, actions, rewards, next_states, dones = zip(*mini_sample)
+    #     self.trainer.train(states, actions, rewards, next_states, dones)
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
     """
@@ -206,16 +207,16 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     xy_act_enc = encode_action(xy_act)
 
     # remember Todo: last state passed twice as parameter because easier with train step... is this a problem?
-    self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
-    self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
-    self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
-    self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
+    # self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
+    # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
+    # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
+    # self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
 
     # train short term memory
-    self.trainer.train_step(last_state_features, last_action_enc, reward, last_state_features, True)
-    # self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
-    # self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
-    # self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
+    self.trainer.train(last_state_features, last_action_enc, reward, last_state_features, True)
+    self.trainer.train(x_last_features, x_act_enc, reward, x_last_features, True)
+    self.trainer.train(y_last_features, y_act_enc, reward, y_last_features, True)
+    self.trainer.train(xy_last_features, xy_act_enc, reward, xy_last_features, True)
 
 
     # Store the model

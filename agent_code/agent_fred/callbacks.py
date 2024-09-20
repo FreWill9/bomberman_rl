@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, best_explosion_score, \
     explosion_score
+from .model import QNet
 
 # if GPU is to be used
 device = torch.device(
@@ -58,7 +59,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = Linear_QNet(21, 1024, 1024, 6).to(device)
+        self.model = QNet(21, 1024, 1024, 6).to(device)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -338,62 +339,3 @@ def state_to_features(self, game_state: dict) -> np.array:
                       f"Proposed way safety: {self.shortest_way_safety} \n")
 
     return test_vector
-
-
-class Linear_QNet(nn.Module):
-    def __init__(self, input_size, hidden_size1, hidden_size2, output_size):
-        super().__init__()
-        self.linear1 = nn.Linear(input_size, hidden_size1)
-        self.linear2 = nn.Linear(hidden_size1, hidden_size2)
-        self.linear3 = nn.Linear(hidden_size2, hidden_size2)
-        self.linear4 = nn.Linear(hidden_size2, output_size)
-
-    def forward(self, x):
-        x = x.to(device)
-        x = F.relu(self.linear1(x))
-        x = F.relu(self.linear2(x))
-        #x = F.relu(self.linear3(x))
-        x = self.linear4(x)
-        return x
-
-
-class QTrainer:
-    def __init__(self, model, lr, gamma):
-        self.lr = lr
-        self.gamma = gamma
-        self.model = model
-        self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
-        self.criterion = nn.SmoothL1Loss()
-
-    def train_step(self, state, action, reward, next_state, done):
-        state = torch.tensor(state, dtype=torch.float).to(device)
-        action = torch.tensor(action, dtype=torch.float).to(device)
-        reward = torch.tensor(reward, dtype=torch.float).to(device)
-        next_state = torch.tensor(next_state, dtype=torch.float).to(device)
-
-        if len(state.shape) == 1:
-            state = torch.unsqueeze(state, 0)
-            next_state = torch.unsqueeze(next_state, 0)
-            action = torch.unsqueeze(action, 0)
-            reward = torch.unsqueeze(reward, 0)
-            done = (done,)
-
-        # 1: predicted Q values with current state
-        pred = self.model(state)
-
-        target = pred.clone()
-
-        for idx in range(len(done)):
-            q_new = reward[idx]
-            if not done[idx]:
-                q_new = reward[idx] + self.gamma * torch.max(self.model(next_state[idx]))
-            target[idx][int(action[idx].item())] = q_new
-
-        # 2: Q_new = r + y * max(next_predicted Q value) -> only do this if not done
-        # pred.clone()
-        # preds[argmax(action)] = Q_new
-        self.optimizer.zero_grad()
-        loss = self.criterion(pred, target)
-        loss.backward()
-
-        self.optimizer.step()
