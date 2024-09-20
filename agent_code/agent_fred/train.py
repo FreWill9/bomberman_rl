@@ -5,10 +5,9 @@ import events as e
 import random
 import matplotlib.pyplot as plt
 import torch
-import time
 
 from .callbacks import state_to_features, QTrainer
-from .helpers import transpose_action, encode_action, plot, mirror_game_state, mirror_action, mirror_feature_vector
+from .helpers import encode_action, plot, mirror_action, mirror_feature_vector
 from .custom_events import *
 
 # if GPU is to be used
@@ -43,11 +42,8 @@ def setup_training(self):
     # self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
 
     self.recent_scores = deque(maxlen=plot_maxlen)
-    self.recent_placements = deque(maxlen=plot_maxlen)
     self.plot_scores = []
     self.plot_mean_scores = []
-    self.plot_placements = []
-    self.plot_mean_placements = []
     self.total_score = 0
     self.epsilon = 0
     self.gamma = 0.95
@@ -86,10 +82,10 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NO_LOOP)
 
     # Transpose shortest_ways to match gui
-    shortest_way_coin = transpose_action(self.shortest_way_coin)
-    shortest_way_crate = transpose_action(self.shortest_way_crate)
-    shortest_way_safety = transpose_action(self.shortest_way_safety)
-    shortest_way_trap = transpose_action(self.shortest_way_trap)
+    shortest_way_coin = self.shortest_way_coin
+    shortest_way_crate = self.shortest_way_crate
+    shortest_way_safety = self.shortest_way_safety
+    shortest_way_trap = self.shortest_way_trap
 
     # Taking the shortest path to the next coin
     if shortest_way_coin == "None" or self.shortest_way_safety != 'None':
@@ -145,14 +141,14 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
 
     # augment the dataset
     # state to features is non-deterministic, calling multiple times can cause problems
-    state_old_features = self.state
+    state_old_features = self.features
     state_new_features = state_to_features(self, new_game_state)
     # mirror feature vectors and actions on x, y and both axes:
     x_old_features, y_old_features, xy_old_features = mirror_feature_vector(state_old_features)
     x_new_features, y_new_features, xy_new_features = mirror_feature_vector(state_new_features)
-    y_act, x_act, xy_act = mirror_action(self_action)
+    x_act, y_act, xy_act = mirror_action(self_action)
 
-    #encode_action
+    # encode_action
     action_enc = encode_action(self_action)
     x_act_enc = encode_action(x_act)
     y_act_enc = encode_action(y_act)
@@ -160,15 +156,15 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
 
     # remember
     self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
-    self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
-    self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
-    self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
+    # self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
+    # self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
+    # self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
 
     # train short term memory
     self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
-    self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
-    self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
-    self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
+    # self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
+    # self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
+    # self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -209,10 +205,10 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # augment the dataset
     # state to features not needed
-    last_state_features = self.state
+    last_state_features = self.features
     # mirror game-states and actions on x, y and both axes:
     x_last_features, y_last_features, xy_last_features = mirror_feature_vector(last_state_features)
-    y_act, x_act, xy_act = mirror_action(last_action)
+    x_act, y_act, xy_act = mirror_action(last_action)
 
     # encode actions
     last_action_enc = encode_action(last_action)
@@ -222,15 +218,15 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # remember
     self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
-    self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
-    self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
-    self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
+    # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
+    # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
+    # self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
 
     # train short term memory
     self.trainer.train_step(last_state_features, last_action_enc, reward, last_state_features, True)
-    self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
-    self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
-    self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
+    # self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
+    # self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
+    # self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
 
     # train long term memory
     if len(self.memory) > BATCH_SIZE:

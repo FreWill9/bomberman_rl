@@ -121,20 +121,6 @@ def build_bomb_map(game_state: dict):
     return bomb_map
 
 
-def transpose_action(action: str) -> str:
-    match action:
-        case "UP":
-            return "LEFT"
-        case "RIGHT":
-            return "DOWN"
-        case "DOWN":
-            return "RIGHT"
-        case "LEFT":
-            return "UP"
-        case _:
-            return action
-
-
 def encode_action(action: str) -> float:
     match action:
         case 'UP':
@@ -154,13 +140,13 @@ def encode_action(action: str) -> float:
 def coord_to_dir(x, y, coord_target) -> (str, float, float, float, float):
     if coord_target is None or (x, y) == coord_target:
         return 'None', 0.0, 0.0, 0.0, 0.0
-    if coord_target == (x - 1, y):
-        return 'UP', 1.0, 0.0, 0.0, 0.0
-    if coord_target == (x, y + 1):
-        return 'RIGHT', 0.0, 1.0, 0.0, 0.0
-    if coord_target == (x + 1, y):
-        return 'DOWN', 0.0, 0.0, 1.0, 0.0
     if coord_target == (x, y - 1):
+        return 'UP', 1.0, 0.0, 0.0, 0.0
+    if coord_target == (x + 1, y):
+        return 'RIGHT', 0.0, 1.0, 0.0, 0.0
+    if coord_target == (x, y + 1):
+        return 'DOWN', 0.0, 0.0, 1.0, 0.0
+    if coord_target == (x - 1, y):
         return 'LEFT', 0.0, 0.0, 0.0, 1.0
 
 
@@ -231,13 +217,13 @@ def mirror_game_state(game_state: dict) -> (dict, dict, dict):
 def mirror_action(action: str) -> (str, str, str):
     match action:
         case 'UP':
-            return 'DOWN', 'UP', 'DOWN'
+            return 'UP', 'DOWN', 'DOWN'
         case 'RIGHT':
-            return 'RIGHT', 'LEFT', 'LEFT'
+            return 'LEFT', 'RIGHT', 'LEFT'
         case 'DOWN':
-            return 'UP', 'DOWN', 'UP'
+            return 'DOWN', 'UP', 'UP'
         case 'LEFT':
-            return 'LEFT', 'RIGHT', 'RIGHT'
+            return 'RIGHT', 'LEFT', 'RIGHT'
         case _:
             return action, action, action
 
@@ -246,32 +232,32 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
     (in_danger, bomb_avail, up, right, down, left, touching_crate, first_step,
      shortest_way_coin_up, shortest_way_coin_right,
      shortest_way_coin_down, shortest_way_coin_left,
-     shortest_way_crate_up, shortest_way_crate_right,
-     shortest_way_crate_down, shortest_way_crate_left,
      shortest_way_safety_up, shortest_way_safety_right,
-     shortest_way_safety_down, shortest_way_safety_left) = tuple(feature_vector)
+     shortest_way_safety_down, shortest_way_safety_left,
+     explosion_score_up, explosion_score_right,
+     explosion_score_down, explosion_score_left, explosion_score_stay) = tuple(feature_vector)
 
-    x = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step,
-                  shortest_way_coin_down, shortest_way_coin_right,
-                  shortest_way_coin_up, shortest_way_coin_left,
-                  shortest_way_crate_down, shortest_way_crate_right,
-                  shortest_way_crate_up, shortest_way_crate_left,
-                  shortest_way_safety_down, shortest_way_safety_right,
-                  shortest_way_safety_up, shortest_way_safety_left])
-    y = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step,
+    x = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step,
                   shortest_way_coin_up, shortest_way_coin_left,
                   shortest_way_coin_down, shortest_way_coin_right,
-                  shortest_way_crate_up, shortest_way_crate_left,
-                  shortest_way_crate_down, shortest_way_crate_right,
                   shortest_way_safety_up, shortest_way_safety_left,
-                  shortest_way_safety_down, shortest_way_safety_right])
+                  shortest_way_safety_down, shortest_way_safety_right,
+                  explosion_score_up, explosion_score_left,
+                  explosion_score_down, explosion_score_right, explosion_score_stay])
+    y = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step,
+                  shortest_way_coin_down, shortest_way_coin_right,
+                  shortest_way_coin_up, shortest_way_coin_left,
+                  shortest_way_safety_down, shortest_way_safety_right,
+                  shortest_way_safety_up, shortest_way_safety_left,
+                  explosion_score_down, explosion_score_right,
+                  explosion_score_up, explosion_score_left, explosion_score_stay])
     xy = np.array([in_danger, bomb_avail, down, left, up, right, touching_crate, first_step,
                    shortest_way_coin_down, shortest_way_coin_left,
                    shortest_way_coin_up, shortest_way_coin_right,
-                   shortest_way_crate_down, shortest_way_crate_left,
-                   shortest_way_crate_up, shortest_way_crate_right,
                    shortest_way_safety_down, shortest_way_safety_left,
-                   shortest_way_safety_up, shortest_way_safety_right])
+                   shortest_way_safety_up, shortest_way_safety_right,
+                   explosion_score_down, explosion_score_left,
+                   explosion_score_up, explosion_score_right, explosion_score_stay])
 
     return x, y, xy
 
@@ -290,7 +276,7 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
     if len(coins) == 0:
         return 0
 
-    # Use BFS to find closest coin that is reachable.
+    # Use BFS to find the closest reachable coin.
     tile_queue = deque([(coord[0], coord[1], 0)])
     visited = np.zeros(game_state['field'].shape)
     visited[coord[0], coord[1]] = 1
@@ -316,6 +302,81 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
             visited[x, y - 1] = 1
 
     return 10000
+
+
+def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), direction: (int, int), max_step: int) -> int:
+    """
+    Get the highest explosion score for any tile reachable in max_step steps in the specified direction.
+    """
+    coins = game_state['coins']
+    if len(coins) == 0:
+        return 0
+
+    # Use BFS
+    tile_queue = deque([(coord[0] + direction[0], coord[1] + direction[1], 1)])
+    visited = np.zeros(game_state['field'].shape)
+    visited[coord[0], coord[1]] = 1
+    visited[coord[0] + direction[0], coord[1] + direction[1]] = 1
+    best_score = 0
+    while len(tile_queue) > 0:
+        x, y, step = tile_queue.popleft()
+
+        best_score = max(best_score, explosion_score(game_state, bomb_map, x, y))
+
+        if step >= max_step:
+            continue
+
+        if passable(x + 1, y, game_state) and visited[x + 1, y] == 0:
+            tile_queue.append((x + 1, y, step + 1))
+            visited[x + 1, y] = 1
+
+        if passable(x - 1, y, game_state) and visited[x - 1, y] == 0:
+            tile_queue.append((x - 1, y, step + 1))
+            visited[x - 1, y] = 1
+
+        if passable(x, y + 1, game_state) and visited[x, y + 1] == 0:
+            tile_queue.append((x, y + 1, step + 1))
+            visited[x, y + 1] = 1
+
+        if passable(x, y - 1, game_state) and visited[x, y - 1] == 0:
+            tile_queue.append((x, y - 1, step + 1))
+            visited[x, y - 1] = 1
+
+    return best_score
+
+
+def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
+    crate_score = 0
+    for i in range(1, 4):
+        if in_field(x + i, y, game_state) and game_state['field'][x + i, y] != -1:
+            if game_state['field'][x + i, y] == 1 and bomb_map[x + i, y] == 100 and \
+              game_state['explosion_map'][x + i, y] == 0:
+                crate_score += 1
+        else:
+            break
+    for i in range(1, 4):
+        if in_field(x - i, y, game_state) and game_state['field'][x - i, y] != -1:
+            if game_state['field'][x - i, y] == 1 and bomb_map[x - i, y] == 100 and \
+              game_state['explosion_map'][x - i, y] == 0:
+                crate_score += 1
+        else:
+            break
+    for i in range(1, 4):
+        if in_field(x, y + i, game_state) and game_state['field'][x, y + i] != -1:
+            if game_state['field'][x, y + i] == 1 and bomb_map[x, y + i] == 100 and \
+              game_state['explosion_map'][x, y + i] == 0:
+                crate_score += 1
+        else:
+            break
+    for i in range(1, 4):
+        if in_field(x, y - i, game_state) and game_state['field'][x, y - i] != -1:
+            if game_state['field'][x, y - i] == 1 and bomb_map[x, y - i] == 100 and \
+              game_state['explosion_map'][x, y - i] == 0:
+                crate_score += 1
+        else:
+            break
+
+    return crate_score / 10
 
 
 def safe_tile_reachable(x, y, escape_space, safe_tiles) -> bool:

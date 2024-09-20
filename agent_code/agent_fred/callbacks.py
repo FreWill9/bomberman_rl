@@ -10,7 +10,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, transpose_action, find_traps
+from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir,
+                      find_traps, best_explosion_score, explosion_score)
 
 # if GPU is to be used
 device = torch.device(
@@ -19,10 +20,16 @@ device = torch.device(
     'cpu')
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
+# up: -y
+# right: +x
+# down: +y
+# left: -x
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 50
+EPS_DECAY = 25
+
+FORCE_BOMBS = True
 
 
 def setup(self):
@@ -45,13 +52,13 @@ def setup(self):
     self.shortest_way_crate = "None"
     self.shortest_way_safety = "None"
     self.steps = 0
-    self.counter = 0
     self.touching_crate = 0
+    self.bomb_cooldown = 0
 
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = Linear_QNet(25, 1024, 1024, 6).to(device)
+        self.model = Linear_QNet(26, 1024, 1024, 6).to(device)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -59,11 +66,6 @@ def setup(self):
 
 
 def act(self, game_state: dict) -> str:
-
-    """if game_state['step'] % 20 == 19:
-        self.logger.debug("Forced drop Bomb")
-        return 'BOMB'"""
-
     """
     Your agent should parse the input, think, and take a decision.
     When not in training mode, the maximum execution time for this method is 0.5s.
@@ -72,33 +74,46 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
-    self.state = state_to_features(self, game_state)
-
+    self.bomb_cooldown = max(0, self.bomb_cooldown - 1)
+    self.features = state_to_features(self, game_state)
     self.step = game_state['step']
+    self.x, self.y = game_state['self'][3]
+
     if self.step == 1:
         self.coordinate_history.clear()
-    self.coordinate_history.append((game_state['self'][3][0], game_state['self'][3][1]))
+    self.coordinate_history.append((self.x, self.y))
 
-    # Exploration vs exploitation
+    action = choose_action(self, game_state)
+
+    if action == 'BOMB' and self.bomb_cooldown <= 0:
+        self.bomb_cooldown = 7
+
+    return action
+
+
+def choose_action(self, game_state: dict) -> str:
+    if FORCE_BOMBS and game_state['step'] % 20 == 19 and self.bomb_cooldown <= 0:
+        self.logger.debug("Force dropped bomb.")
+        return 'BOMB'
+
+    # Explore random actions with probability epsilon
     rounds_done = game_state['round']
     eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * rounds_done / EPS_DECAY)
-    sample = random.random()
 
-    if self.train and sample <= eps_threshold:
-        with torch.no_grad():
-            self.logger.debug(f"Choosing action purely at random. Prob: {int(eps_threshold * 100)} %")
+    if self.train and random.random() <= eps_threshold:
+        self.logger.debug(f"Choosing action purely at random. Prob: {eps_threshold * 100:.2f} %")
         # 80%: walk in any direction. 10% wait. 10% bomb.
         return np.random.choice(ACTIONS, p=[.2, .2, .2, .2, .1, .1])
 
     self.logger.debug("Querying model for action.")
 
-    state0 = torch.tensor(self.state, dtype=torch.float)
-    prediction = self.model(state0)
-    move = torch.argmax(prediction).item()
+    features = torch.tensor(self.features, dtype=torch.float)
+    prediction = self.model(features)
+    action = ACTIONS[torch.argmax(prediction).item()]
 
-    self.logger.debug(f"Chose action {ACTIONS[move]}")
+    self.logger.debug(f"Chose action {action}")
 
-    return ACTIONS[move]
+    return action
 
 
 def state_to_features(self, game_state: dict) -> np.array:
@@ -112,6 +127,7 @@ def state_to_features(self, game_state: dict) -> np.array:
     which is a dictionary. Consult 'get_state_for_agent' in environment.py to see
     what it contains.
 
+    :param self: The same object that is passed to all of your callbacks.
     :param game_state:  A dictionary describing the current game board.
     :return: np.array
     """
@@ -183,10 +199,10 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # Up, Right, Down, Left, Touching_crate
     self.touching_crate = 0
-    up = tile_value(game_state, (self_x - 1, self_y), self.coordinate_history)
-    right = tile_value(game_state, (self_x, self_y + 1), self.coordinate_history)
-    down = tile_value(game_state, (self_x + 1, self_y), self.coordinate_history)
-    left = tile_value(game_state, (self_x, self_y - 1), self.coordinate_history)
+    up = tile_value(game_state, (self_x, self_y - 1), self.coordinate_history)
+    right = tile_value(game_state, (self_x + 1, self_y), self.coordinate_history)
+    down = tile_value(game_state, (self_x, self_y + 1), self.coordinate_history)
+    left = tile_value(game_state, (self_x - 1, self_y), self.coordinate_history)
     if arena[self_x - 1, self_y] == 1 or arena[self_x + 1, self_y] == 1 or \
             arena[self_x, self_y - 1] == 1 or arena[self_x, self_y + 1] == 1:
         self.touching_crate = 1
@@ -258,13 +274,33 @@ def state_to_features(self, game_state: dict) -> np.array:
     dir_crate = look_for_targets(free_space, (self_x, self_y), free_crates)
     dir_safety = look_for_targets(escape_space, (self_x, self_y), safe_tiles)
 
+    # find best explosion direction
+    max_steps = self.bomb_cooldown + 2
+    explosion_score_up = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, -1), max_steps)
+    explosion_score_right = best_explosion_score(game_state, bomb_map, (self_x, self_y), (1, 0), max_steps)
+    explosion_score_down = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, 1), max_steps)
+    explosion_score_left = best_explosion_score(game_state, bomb_map, (self_x, self_y), (-1, 0), max_steps)
+    explosion_score_stay = explosion_score(game_state, bomb_map, self_x, self_y)
+
+    explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
+                        explosion_score_stay]
+    best_explosion = np.argmax(explosion_scores)
+    if explosion_scores[best_explosion] == 0:
+        best_explosion = -1
+    explosion_scores = [float(i == best_explosion) for i in range(5)]
+    if best_explosion == 4 or best_explosion == -1:
+        self.shortest_way_crate = "None"
+    else:
+        self.shortest_way_crate = ACTIONS[best_explosion]
+
     # Assign shortest way coordinates to features
     self.shortest_way_coin, shortest_way_coin_up, shortest_way_coin_right, \
         shortest_way_coin_down, shortest_way_coin_left = coord_to_dir(self_x, self_y, dir_coin)
 
-    if self.touching_crate == 0:
-        self.shortest_way_crate, shortest_way_crate_up, shortest_way_crate_right, \
-            shortest_way_crate_down, shortest_way_crate_left = coord_to_dir(self_x, self_y, dir_crate)
+    if best_explosion == -1:
+        crate_dirs = coord_to_dir(self_x, self_y, dir_crate)
+        self.shortest_way_crate = crate_dirs[0]
+        explosion_scores = list(crate_dirs[1:5]) + [0.0]
 
     if in_danger != 0.0:
         self.shortest_way_safety, shortest_way_safety_up, shortest_way_safety_right, \
@@ -287,8 +323,8 @@ def state_to_features(self, game_state: dict) -> np.array:
                               in_danger, self.placement/4, up, right, down, left, self.touching_crate,
                               shortest_way_coin_up, shortest_way_coin_right,
                               shortest_way_coin_down, shortest_way_coin_left,
-                              shortest_way_crate_up, shortest_way_crate_right,
-                              shortest_way_crate_down, shortest_way_crate_left,
+                              # shortest_way_crate_up, shortest_way_crate_right,
+                              # shortest_way_crate_down, shortest_way_crate_left,
                               shortest_way_safety_up, shortest_way_safety_right,
                               shortest_way_safety_down, shortest_way_safety_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
@@ -302,13 +338,14 @@ def state_to_features(self, game_state: dict) -> np.array:
                             shortest_way_safety_up, shortest_way_safety_right,
                             shortest_way_safety_down, shortest_way_safety_left,
                             shortest_way_trap_up, shortest_way_trap_right,
-                            shortest_way_trap_down, shortest_way_trap_left])
+                            shortest_way_trap_down, shortest_way_trap_left,
+                            *explosion_scores])
 
     # For debugging
-    self.logger.debug(f"Proposed way coin: {transpose_action(self.shortest_way_coin)} \n"
-                      f"Proposed way crate: {transpose_action(self.shortest_way_crate)} \n"
-                      f"Proposed way safety: {transpose_action(self.shortest_way_safety)} \n"
-                      f"Proposed way trap: {transpose_action(self.shortest_way_trap)}")
+    self.logger.debug(f"Proposed way coin: {self.shortest_way_coin} \n"
+                      f"Proposed way crate: {self.shortest_way_crate} \n"
+                      f"Proposed way safety: {self.shortest_way_safety} \n"
+                      f"Proposed way trap: {self.shortest_way_trap}")
 
     return test_vector
 
@@ -318,13 +355,15 @@ class Linear_QNet(nn.Module):
         super().__init__()
         self.linear1 = nn.Linear(input_size, hidden_size1)
         self.linear2 = nn.Linear(hidden_size1, hidden_size2)
-        self.linear3 = nn.Linear(hidden_size2, output_size)
+        self.linear3 = nn.Linear(hidden_size2, hidden_size2)
+        self.linear4 = nn.Linear(hidden_size2, output_size)
 
     def forward(self, x):
         x = x.to(device)
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
-        x = self.linear3(x)
+        # x = F.relu(self.linear3(x))
+        x = self.linear4(x)
         return x
 
 
