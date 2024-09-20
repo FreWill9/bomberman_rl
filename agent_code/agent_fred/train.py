@@ -96,7 +96,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_SHORTEST_WAY_COIN)
 
     # Taking the shortest path to the next crate
-    if shortest_way_crate == "None" or self.shortest_way_safety != 'None':
+    if shortest_way_crate == "None" or self.shortest_way_safety != 'None' or self.shortest_way_crate == "BOMB":
         pass
     elif self_action == shortest_way_crate:
         events.append(SHORTEST_WAY_CRATE)
@@ -128,7 +128,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # Good Bombs destroy crates or put opps in danger
     if old_game_state['self'][2]:
         pass
-    elif self.good_bomb_here and self_action == 'BOMB':
+    elif self_action == 'BOMB' and self.shortest_way_crate == 'BOMB':
         events.append(GOOD_BOMB)
     elif self_action == 'BOMB':
         events.append(BAD_BOMB)
@@ -163,11 +163,20 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
 
     # train short term memory
-    self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
-    self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
-    self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
-    self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
+    # self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
+    # self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
+    # self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
+    # self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
 
+    if self.step % 4 == 0:
+        # train long term memory
+        if len(self.memory) > BATCH_SIZE:
+            mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
+        else:
+            mini_sample = self.memory
+
+        states, actions, rewards, next_states, dones = zip(*mini_sample)
+        self.trainer.train_step(states, actions, rewards, next_states, dones)
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
     """
@@ -226,18 +235,9 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # train short term memory
     self.trainer.train_step(last_state_features, last_action_enc, reward, last_state_features, True)
-    self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
-    self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
-    self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
-
-    # train long term memory
-    if len(self.memory) > BATCH_SIZE:
-        mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
-    else:
-        mini_sample = self.memory
-
-    states, actions, rewards, next_states, dones = zip(*mini_sample)
-    self.trainer.train_step(states, actions, rewards, next_states, dones)
+    # self.trainer.train_step(x_last_features, x_act_enc, reward, x_last_features, True)
+    # self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
+    # self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
 
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
@@ -316,15 +316,15 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.COIN_COLLECTED: +1,
         e.KILLED_SELF: -1,
         e.GOT_KILLED: -1,
-        e.KILLED_OPPONENT: +5,
-        e.OPPONENT_ELIMINATED: +3,
+        e.KILLED_OPPONENT: +3,
+        e.OPPONENT_ELIMINATED: +2,
         e.INVALID_ACTION: -1,
         e.SURVIVED_ROUND: +1,
         e.CRATE_DESTROYED: +1,
         e.COIN_FOUND: +1,
         GOOD_BOMB: +1,
-        BAD_BOMB: 0,
-        TRAP: +20,
+        BAD_BOMB: -1,
+        TRAP: +10,
         MISSED_TRAP: -10,
         SHORTEST_WAY_COIN: +1,
         NOT_SHORTEST_WAY_COIN: 0,

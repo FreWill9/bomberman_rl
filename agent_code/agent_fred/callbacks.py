@@ -288,12 +288,10 @@ def state_to_features(self, game_state: dict) -> np.array:
     if explosion_scores[best_explosion] == 0:
         best_explosion = -1
     explosion_scores = [float(i == best_explosion) for i in range(5)]
-    self.good_bomb_here = False
-    if best_explosion == 4 or best_explosion == -1:
-
-        if best_explosion == 4:
-            self.good_bomb_here = True
+    if best_explosion == -1:
         self.shortest_way_crate = "None"
+    elif best_explosion == 4:
+        self.shortest_way_crate = "BOMB"
     else:
         self.shortest_way_crate = ACTIONS[best_explosion]
 
