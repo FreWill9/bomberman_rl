@@ -5,6 +5,63 @@ from IPython import display
 import matplotlib.pyplot as plt
 import copy
 
+DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
+
+def find_closest_target(game_state: dict, start: (int, int), targets: list[(int, int)]) -> list[(int, int)] | None:
+    """
+    Find the closest reachable target from the start position using BFS.
+
+    Args:
+        game_state: the current game state.
+        start: the starting position.
+        targets: the list of possible target positions.
+    Returns:
+        the path to the closest target excluding the starting position or None if no target is reachable.
+    """
+    if len(targets) == 0:
+        return None
+
+    # Use BFS to find the closest reachable coin.
+    tile_queue = deque([(start[0], start[1], 0)])
+    parents = {start: start}
+
+    best = None
+
+    while len(tile_queue) > 0:
+        x, y, step = tile_queue.popleft()
+
+        if any([x == t[0] and y == t[1] for t in targets]):
+            best = (x, y, step)
+            break
+
+        if passable(x + 1, y, game_state) and (x + 1, y) not in parents:
+            tile_queue.append((x + 1, y, step + 1))
+            parents[(x + 1, y)] = (x, y)
+
+        if passable(x - 1, y, game_state) and (x - 1, y) not in parents:
+            tile_queue.append((x - 1, y, step + 1))
+            parents[(x - 1, y)] = (x, y)
+
+        if passable(x, y + 1, game_state) and (x, y + 1) not in parents:
+            tile_queue.append((x, y + 1, step + 1))
+            parents[(x, y + 1)] = (x, y)
+
+        if passable(x, y - 1, game_state) and (x, y - 1) not in parents:
+            tile_queue.append((x, y - 1, step + 1))
+            parents[(x, y - 1)] = (x, y)
+
+    if best is None:
+        return None
+
+    path = []
+    current = best[0:1]
+    while current != start:
+        path.append(current)
+        current = parents[current]
+
+    path.reverse()
+    return path
+
 
 def look_for_targets(free_space, start, targets, logger=None):
     """
@@ -360,28 +417,28 @@ def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
     for i in range(1, 4):
         if in_field(x + i, y, game_state) and game_state['field'][x + i, y] != -1:
             if game_state['field'][x + i, y] == 1 and bomb_map[x + i, y] == 100 and \
-              game_state['explosion_map'][x + i, y] == 0:
+                    game_state['explosion_map'][x + i, y] == 0:
                 crate_score += 1
         else:
             break
     for i in range(1, 4):
         if in_field(x - i, y, game_state) and game_state['field'][x - i, y] != -1:
             if game_state['field'][x - i, y] == 1 and bomb_map[x - i, y] == 100 and \
-              game_state['explosion_map'][x - i, y] == 0:
+                    game_state['explosion_map'][x - i, y] == 0:
                 crate_score += 1
         else:
             break
     for i in range(1, 4):
         if in_field(x, y + i, game_state) and game_state['field'][x, y + i] != -1:
             if game_state['field'][x, y + i] == 1 and bomb_map[x, y + i] == 100 and \
-              game_state['explosion_map'][x, y + i] == 0:
+                    game_state['explosion_map'][x, y + i] == 0:
                 crate_score += 1
         else:
             break
     for i in range(1, 4):
         if in_field(x, y - i, game_state) and game_state['field'][x, y - i] != -1:
             if game_state['field'][x, y - i] == 1 and bomb_map[x, y - i] == 100 and \
-              game_state['explosion_map'][x, y - i] == 0:
+                    game_state['explosion_map'][x, y - i] == 0:
                 crate_score += 1
         else:
             break
@@ -398,7 +455,6 @@ def safe_tile_reachable(x, y, escape_space, safe_tiles) -> bool:
 
 
 def find_traps(game_state: dict, empty_tiles, others: list[(int, int)]) -> (list, list):
-
     arena = game_state['field']
     explosions = game_state['explosion_map']
     self_coord = game_state['self'][3]
