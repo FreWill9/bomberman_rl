@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, transpose_action
+from .helpers import look_for_targets, build_bomb_map, tile_value, coord_to_dir, transpose_action, find_traps
 
 # if GPU is to be used
 device = torch.device(
@@ -22,7 +22,7 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 25
+EPS_DECAY = 50
 
 
 def setup(self):
@@ -51,7 +51,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = Linear_QNet(20, 512, 512, 6).to(device)
+        self.model = Linear_QNet(25, 1024, 1024, 6).to(device)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -177,14 +177,9 @@ def state_to_features(self, game_state: dict) -> np.array:
         in_danger = 1.0
 
     # Placement
-    opp_scores = [score_opp1, score_opp2, score_opp3]
-    opp_scores.sort(reverse=True)
-    if score_self > opp_scores[0]:
-        placement = 1
-    elif score_self > opp_scores[1]:
-        placement = 0
-    else:
-        placement = -1
+    all_scores = [score_self, score_opp1, score_opp2, score_opp3]
+    all_scores.sort(reverse=True)
+    self.placement = all_scores.index(score_self) + 1
 
     # Up, Right, Down, Left, Touching_crate
     self.touching_crate = 0
@@ -215,6 +210,12 @@ def state_to_features(self, game_state: dict) -> np.array:
     shortest_way_safety_down = 0.0
     shortest_way_safety_left = 0.0
     self.shortest_way_safety = 'None'
+
+    shortest_way_trap_up = 0.0
+    shortest_way_trap_right = 0.0
+    shortest_way_trap_down = 0.0
+    shortest_way_trap_left = 0.0
+    self.shortest_way_trap = 'None'
 
     explosions = game_state['explosion_map']
     coins = game_state['coins']
@@ -269,12 +270,21 @@ def state_to_features(self, game_state: dict) -> np.array:
         self.shortest_way_safety, shortest_way_safety_up, shortest_way_safety_right, \
             shortest_way_safety_down, shortest_way_safety_left = coord_to_dir(self_x, self_y, dir_safety)
 
+    # Find trap tiles
+    trap_tiles, bomb_for_trap_tiles = find_traps(game_state, empty_tiles, others)
+    dir_trap = look_for_targets(free_space, (self_x, self_y), bomb_for_trap_tiles)
+    self.shortest_way_trap, shortest_way_trap_up, shortest_way_trap_right, \
+        shortest_way_trap_down, shortest_way_trap_left = coord_to_dir(self_x, self_y, dir_trap)
+    self.bomb_for_trap = 0
+    if (self_x, self_y) in bomb_for_trap_tiles:
+        self.bomb_for_trap = 1
+
     # Build feature vector
     flat_arena = arena.flatten()
     rest_features = np.array([first_step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
                               score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
                               x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
-                              in_danger, placement, up, right, down, left, self.touching_crate,
+                              in_danger, self.placement/4, up, right, down, left, self.touching_crate,
                               shortest_way_coin_up, shortest_way_coin_right,
                               shortest_way_coin_down, shortest_way_coin_left,
                               shortest_way_crate_up, shortest_way_crate_right,
@@ -283,19 +293,22 @@ def state_to_features(self, game_state: dict) -> np.array:
                               shortest_way_safety_down, shortest_way_safety_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
-    test_vector = np.array([in_danger, bomb_avail, up, right, down, left, self.touching_crate, first_step,
+    test_vector = np.array([in_danger, bomb_avail, up, right, down, left,
+                            self.touching_crate, first_step, self.bomb_for_trap,
                             shortest_way_coin_up, shortest_way_coin_right,
                             shortest_way_coin_down, shortest_way_coin_left,
                             shortest_way_crate_up, shortest_way_crate_right,
                             shortest_way_crate_down, shortest_way_crate_left,
                             shortest_way_safety_up, shortest_way_safety_right,
-                            shortest_way_safety_down, shortest_way_safety_left])
+                            shortest_way_safety_down, shortest_way_safety_left,
+                            shortest_way_trap_up, shortest_way_trap_right,
+                            shortest_way_trap_down, shortest_way_trap_left])
 
     # For debugging
-    self.logger.debug(f"\n"
-                      f"Proposed way coin: {transpose_action(self.shortest_way_coin)} \n"
+    self.logger.debug(f"Proposed way coin: {transpose_action(self.shortest_way_coin)} \n"
                       f"Proposed way crate: {transpose_action(self.shortest_way_crate)} \n"
-                      f"Proposed way safety: {transpose_action(self.shortest_way_safety)} \n")
+                      f"Proposed way safety: {transpose_action(self.shortest_way_safety)} \n"
+                      f"Proposed way trap: {transpose_action(self.shortest_way_trap)}")
 
     return test_vector
 

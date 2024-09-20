@@ -316,3 +316,39 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
             visited[x, y - 1] = 1
 
     return 10000
+
+
+def safe_tile_reachable(x, y, escape_space, safe_tiles) -> bool:
+    dir_safety = look_for_targets(escape_space, (x, y), safe_tiles)
+    if dir_safety is None or (x, y) == dir_safety:
+        return False
+    else:
+        return True
+
+
+def find_traps(game_state, empty_tiles, others) -> (list, list):
+    trap_tiles = set([])
+    bomb_for_trap_tiles = set([])
+
+    arena = game_state['field']
+    explosions = game_state['explosion_map']
+
+    for x, y in empty_tiles:
+        pot_game_state = copy.deepcopy(game_state)
+        pot_game_state['bombs'].append(((x, y), 5))
+        pot_bomb_map = build_bomb_map(pot_game_state)
+        pot_bomb_xys = [xy for (xy, t) in pot_game_state['bombs']]
+        pot_escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and \
+                            tile not in pot_bomb_xys]
+        pot_escape_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
+        for tile in pot_escape_tiles:
+            pot_escape_space[tile[0], tile[1]] = True
+        pot_safe_tiles = [tile for tile in empty_tiles if pot_bomb_map[tile[0], tile[1]] == 100 and \
+                          explosions[tile[0], tile[1]] == 0]
+        for i, j in empty_tiles:
+            if pot_bomb_map[i, j] < 100 and not safe_tile_reachable(i, j, pot_escape_space, pot_safe_tiles):
+                trap_tiles.add((i, j))
+                if (i, j) in others:
+                    bomb_for_trap_tiles.add((x, y))
+
+    return list(trap_tiles), list(bomb_for_trap_tiles)
