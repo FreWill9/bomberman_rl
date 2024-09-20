@@ -6,7 +6,7 @@ import random
 import matplotlib.pyplot as plt
 import torch
 
-from .callbacks import state_to_features, QTrainer
+from .callbacks import state_to_features
 from .helpers import encode_action, plot, mirror_action, mirror_feature_vector
 from .custom_events import *
 from .model import QNet, DQN, DQN2
