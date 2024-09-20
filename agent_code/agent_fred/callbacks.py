@@ -27,9 +27,9 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 25
+EPS_DECAY = 50
 
-FORCE_BOMBS = True
+FORCE_BOMBS = False
 
 
 def setup(self):
@@ -288,7 +288,11 @@ def state_to_features(self, game_state: dict) -> np.array:
     if explosion_scores[best_explosion] == 0:
         best_explosion = -1
     explosion_scores = [float(i == best_explosion) for i in range(5)]
+    self.good_bomb_here = False
     if best_explosion == 4 or best_explosion == -1:
+
+        if best_explosion == 4:
+            self.good_bomb_here = True
         self.shortest_way_crate = "None"
     else:
         self.shortest_way_crate = ACTIONS[best_explosion]
@@ -320,7 +324,7 @@ def state_to_features(self, game_state: dict) -> np.array:
     rest_features = np.array([first_step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
                               score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
                               x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
-                              in_danger, self.placement/4, up, right, down, left, self.touching_crate,
+                              in_danger, self.placement / 4, up, right, down, left, self.touching_crate,
                               shortest_way_coin_up, shortest_way_coin_right,
                               shortest_way_coin_down, shortest_way_coin_left,
                               # shortest_way_crate_up, shortest_way_crate_right,
@@ -333,8 +337,6 @@ def state_to_features(self, game_state: dict) -> np.array:
                             self.touching_crate, first_step, self.bomb_for_trap,
                             shortest_way_coin_up, shortest_way_coin_right,
                             shortest_way_coin_down, shortest_way_coin_left,
-                            shortest_way_crate_up, shortest_way_crate_right,
-                            shortest_way_crate_down, shortest_way_crate_left,
                             shortest_way_safety_up, shortest_way_safety_right,
                             shortest_way_safety_down, shortest_way_safety_left,
                             shortest_way_trap_up, shortest_way_trap_right,
@@ -342,7 +344,8 @@ def state_to_features(self, game_state: dict) -> np.array:
                             *explosion_scores])
 
     # For debugging
-    self.logger.debug(f"Proposed way coin: {self.shortest_way_coin} \n"
+    self.logger.debug(f"\n"
+                      f"Proposed way coin: {self.shortest_way_coin} \n"
                       f"Proposed way crate: {self.shortest_way_crate} \n"
                       f"Proposed way safety: {self.shortest_way_safety} \n"
                       f"Proposed way trap: {self.shortest_way_trap}")

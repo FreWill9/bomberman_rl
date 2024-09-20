@@ -229,33 +229,41 @@ def mirror_action(action: str) -> (str, str, str):
 
 
 def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
-    (in_danger, bomb_avail, up, right, down, left, touching_crate, first_step,
+    (in_danger, bomb_avail, up, right, down, left, touching_crate, first_step, bomb_for_trap,
      shortest_way_coin_up, shortest_way_coin_right,
      shortest_way_coin_down, shortest_way_coin_left,
      shortest_way_safety_up, shortest_way_safety_right,
      shortest_way_safety_down, shortest_way_safety_left,
+     shortest_way_trap_up, shortest_way_trap_right,
+     shortest_way_trap_down, shortest_way_trap_left,
      explosion_score_up, explosion_score_right,
      explosion_score_down, explosion_score_left, explosion_score_stay) = tuple(feature_vector)
 
-    x = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step,
+    x = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step, bomb_for_trap,
                   shortest_way_coin_up, shortest_way_coin_left,
                   shortest_way_coin_down, shortest_way_coin_right,
                   shortest_way_safety_up, shortest_way_safety_left,
                   shortest_way_safety_down, shortest_way_safety_right,
+                  shortest_way_trap_up, shortest_way_trap_left,
+                  shortest_way_trap_down, shortest_way_trap_right,
                   explosion_score_up, explosion_score_left,
                   explosion_score_down, explosion_score_right, explosion_score_stay])
-    y = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step,
+    y = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step, bomb_for_trap,
                   shortest_way_coin_down, shortest_way_coin_right,
                   shortest_way_coin_up, shortest_way_coin_left,
                   shortest_way_safety_down, shortest_way_safety_right,
                   shortest_way_safety_up, shortest_way_safety_left,
+                  shortest_way_trap_down, shortest_way_trap_right,
+                  shortest_way_trap_up, shortest_way_trap_left,
                   explosion_score_down, explosion_score_right,
                   explosion_score_up, explosion_score_left, explosion_score_stay])
-    xy = np.array([in_danger, bomb_avail, down, left, up, right, touching_crate, first_step,
+    xy = np.array([in_danger, bomb_avail, down, left, up, right, touching_crate, first_step, bomb_for_trap,
                    shortest_way_coin_down, shortest_way_coin_left,
                    shortest_way_coin_up, shortest_way_coin_right,
                    shortest_way_safety_down, shortest_way_safety_left,
                    shortest_way_safety_up, shortest_way_safety_right,
+                   shortest_way_trap_down, shortest_way_trap_left,
+                   shortest_way_trap_up, shortest_way_trap_right,
                    explosion_score_down, explosion_score_left,
                    explosion_score_up, explosion_score_right, explosion_score_stay])
 
@@ -268,13 +276,15 @@ def passable(x, y, game_state):
             and (x, y) not in [xy for (n, s, b, xy) in game_state['others']])
 
 
-def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
+def closest_target_dist(game_state: dict, coord: (int, int), targets: list[(int, int)] = None) -> int:
     """
-    Calculate the distance to the closest coin from the coordinate using BFS.
+    Calculate the distance to the closest target from the coordinate using BFS.
     """
-    coins = game_state['coins']
-    if len(coins) == 0:
-        return 0
+    if targets is None:
+        targets = game_state['coins']
+
+    if len(targets) == 0:
+        return 10_000
 
     # Use BFS to find the closest reachable coin.
     tile_queue = deque([(coord[0], coord[1], 0)])
@@ -282,7 +292,7 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
     visited[coord[0], coord[1]] = 1
     while len(tile_queue) > 0:
         x, y, step = tile_queue.popleft()
-        if any([x == c[0] and y == c[1] for c in coins]):
+        if any([x == t[0] and y == t[1] for t in targets]):
             return step
 
         if passable(x + 1, y, game_state) and visited[x + 1, y] == 0:
@@ -301,7 +311,7 @@ def closest_coin_dist(game_state: dict, coord: (int, int)) -> int:
             tile_queue.append((x, y - 1, step + 1))
             visited[x, y - 1] = 1
 
-    return 10000
+    return 10_000
 
 
 def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), direction: (int, int), max_step: int) -> int:
@@ -387,29 +397,32 @@ def safe_tile_reachable(x, y, escape_space, safe_tiles) -> bool:
         return True
 
 
-def find_traps(game_state, empty_tiles, others) -> (list, list):
-    trap_tiles = set([])
-    bomb_for_trap_tiles = set([])
+def find_traps(game_state: dict, empty_tiles, others: list[(int, int)]) -> (list, list):
 
     arena = game_state['field']
     explosions = game_state['explosion_map']
+    self_coord = game_state['self'][3]
 
-    for x, y in empty_tiles:
-        pot_game_state = copy.deepcopy(game_state)
-        pot_game_state['bombs'].append(((x, y), 5))
-        pot_bomb_map = build_bomb_map(pot_game_state)
-        pot_bomb_xys = [xy for (xy, t) in pot_game_state['bombs']]
-        pot_escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and \
-                            tile not in pot_bomb_xys]
-        pot_escape_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
-        for tile in pot_escape_tiles:
-            pot_escape_space[tile[0], tile[1]] = True
-        pot_safe_tiles = [tile for tile in empty_tiles if pot_bomb_map[tile[0], tile[1]] == 100 and \
-                          explosions[tile[0], tile[1]] == 0]
-        for i, j in empty_tiles:
-            if pot_bomb_map[i, j] < 100 and not safe_tile_reachable(i, j, pot_escape_space, pot_safe_tiles):
-                trap_tiles.add((i, j))
-                if (i, j) in others:
-                    bomb_for_trap_tiles.add((x, y))
+    trap_tiles = set([])
+    bomb_for_trap_tiles = set([])
+
+    if closest_target_dist(game_state, self_coord, others) < 8:
+        for x, y in empty_tiles:
+            pot_game_state = copy.deepcopy(game_state)
+            pot_game_state['bombs'].append(((x, y), 5))
+            pot_bomb_map = build_bomb_map(pot_game_state)
+            pot_bomb_xys = [xy for (xy, t) in pot_game_state['bombs']]
+            pot_escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and \
+                                tile not in pot_bomb_xys]
+            pot_escape_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
+            for tile in pot_escape_tiles:
+                pot_escape_space[tile[0], tile[1]] = True
+            pot_safe_tiles = [tile for tile in empty_tiles if pot_bomb_map[tile[0], tile[1]] == 100 and \
+                              explosions[tile[0], tile[1]] == 0]
+            for i, j in empty_tiles:
+                if pot_bomb_map[i, j] < 100 and not safe_tile_reachable(i, j, pot_escape_space, pot_safe_tiles):
+                    trap_tiles.add((i, j))
+                    if (i, j) in others:
+                        bomb_for_trap_tiles.add((x, y))
 
     return list(trap_tiles), list(bomb_for_trap_tiles)
