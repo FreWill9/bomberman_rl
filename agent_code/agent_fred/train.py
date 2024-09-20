@@ -95,7 +95,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_SHORTEST_WAY_COIN)
 
     # Taking the shortest path to the next crate
-    if shortest_way_crate == "None" or self.shortest_way_safety != 'None':
+    if shortest_way_crate == "None" or self.shortest_way_safety != 'None' or self.shortest_way_crate == "BOMB":
         pass
     elif self_action == shortest_way_crate:
         events.append(SHORTEST_WAY_CRATE)
@@ -117,7 +117,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_STEP_ONE_BOMB)
 
     # Good Bombs destroy crates or put opps in danger
-    if self.touching_crate and self_action == 'BOMB':
+    if self_action == 'BOMB' and self.shortest_way_crate == 'BOMB':
         events.append(GOOD_BOMB)
     elif self_action == 'BOMB':
         events.append(BAD_BOMB)
@@ -147,16 +147,25 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
                       f"y: {y_old_features, y_act_enc, reward, y_new_features} \n"
                       f"xy: {xy_old_features, xy_act_enc, reward, xy_new_features} \n")"""
     self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
-    # self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
-    # self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
-    # self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
+    self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
+    self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
+    self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
 
     # train short term memory
-    self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
+    # self.trainer.train_step(state_old_features, action_enc, reward, state_new_features, False)
     # self.trainer.train_step(x_old_features, x_act_enc, reward, x_new_features, False)
     # self.trainer.train_step(y_old_features, y_act_enc, reward, y_new_features, False)
     # self.trainer.train_step(xy_old_features, xy_act_enc, reward, xy_new_features, False)
 
+    if self.step % 4 == 0:
+        # train long term memory
+        if len(self.memory) > BATCH_SIZE:
+            mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
+        else:
+            mini_sample = self.memory
+
+        states, actions, rewards, next_states, dones = zip(*mini_sample)
+        self.trainer.train_step(states, actions, rewards, next_states, dones)
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
     """
@@ -198,9 +207,9 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # remember Todo: last state passed twice as parameter because easier with train step... is this a problem?
     self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
-    # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
-    # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
-    # self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
+    self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
+    self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
+    self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
 
     # train short term memory
     self.trainer.train_step(last_state_features, last_action_enc, reward, last_state_features, True)
@@ -208,14 +217,6 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     # self.trainer.train_step(y_last_features, y_act_enc, reward, y_last_features, True)
     # self.trainer.train_step(xy_last_features, xy_act_enc, reward, xy_last_features, True)
 
-    # train long term memory
-    if len(self.memory) > BATCH_SIZE:
-        mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
-    else:
-        mini_sample = self.memory
-
-    states, actions, rewards, next_states, dones = zip(*mini_sample)
-    self.trainer.train_step(states, actions, rewards, next_states, dones)
 
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
@@ -315,8 +316,8 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.BOMB_EXPLODED: +0,
         STEP_ONE_BOMB: -0,
         NOT_STEP_ONE_BOMB: +0,
-        GOOD_BOMB: +1,
-        BAD_BOMB: -1,
+        GOOD_BOMB: +5,
+        BAD_BOMB: -5,
         LOOP: 0,
         NO_LOOP: +0,
         SHORTEST_WAY_COIN: +1,
