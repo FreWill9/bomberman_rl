@@ -3,7 +3,7 @@ import copy
 import numpy as np
 from collections import namedtuple, deque
 from agent_code.agent_fred.helpers import (build_bomb_map, tile_value, look_for_targets,
-                                           coord_to_dir, safe_tile_reachable, find_traps)
+                                           coord_to_dir, find_traps, explosion_score)
 
 experiment_state = {'round': 1,
 
@@ -11,10 +11,10 @@ experiment_state = {'round': 1,
 
                     'field': np.array(
                         [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
-                         [-1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, -1, 0, -1, -1, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
-                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 1, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
@@ -28,13 +28,13 @@ experiment_state = {'round': 1,
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
 
-                    'self': ('test', 2, True, (np.int64(4), np.int64(1))),
+                    'self': ('test', 2, True, (np.int64(2), np.int64(1))),
 
-                    'others': [('0', 2, True, (np.int64(1), np.int64(1))), ],
+                    'others': [('0', 2, True, (np.int64(1), np.int64(1)))],
 
-                    'bombs': [],
+                    'bombs': [((1, 2), 2)],
 
-                    'coins': [],
+                    'coins': [(7, 1)],
 
                     'user_input': None,
 
@@ -253,7 +253,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     self.bomb_for_trap = 0
     if (self_x, self_y) in bomb_for_trap_tiles:
         self.bomb_for_trap = 1
-    print(self.bomb_for_trap)
 
     # Build feature vector
     flat_arena = arena.flatten()
@@ -281,5 +280,7 @@ def state_to_features(self, game_state: dict) -> np.array:
 
 
 features = state_to_features(self, experiment_state)
+
+print(explosion_score(experiment_state, 1, 1))
 
 print("<3")

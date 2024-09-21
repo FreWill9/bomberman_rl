@@ -20,6 +20,7 @@ device = torch.device(
     'cuda' if torch.cuda.is_available() else
     'mps' if torch.backends.mps.is_available() else
     'cpu')
+device = 'cpu'
 
 # Hyperparameters -- DO modify
 MAX_MEMORY = 40_000
@@ -76,8 +77,8 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     if 'WAIT' not in events:
         events.append(NOT_WAITED)
 
-    # If agent has been in the same location four times recently, it's a loop
-    if self.coordinate_history.count((new_game_state['self'][3][0], new_game_state['self'][3][1])) >= 4:
+    # If agent has been in the same location three times recently, it's a loop
+    if self.coordinate_history.count((new_game_state['self'][3][0], new_game_state['self'][3][1])) >= 3:
         events.append(LOOP)
     else:
         events.append(NO_LOOP)
@@ -89,7 +90,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     shortest_way_trap = self.shortest_way_trap
 
     # Taking the shortest path to the next coin
-    if shortest_way_coin == "None" or self.shortest_way_safety != 'None':
+    if shortest_way_coin == "None" or shortest_way_safety != 'None':
         pass
     elif self_action == shortest_way_coin:
         events.append(SHORTEST_WAY_COIN)
@@ -97,7 +98,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_SHORTEST_WAY_COIN)
 
     # Taking the shortest path to the next crate
-    if shortest_way_crate == "None" or self.shortest_way_safety != 'None' or self.shortest_way_crate == "BOMB":
+    if shortest_way_crate == "None" or shortest_way_safety != 'None' or shortest_way_crate == "BOMB":
         pass
     elif self_action == shortest_way_crate:
         events.append(SHORTEST_WAY_CRATE)
@@ -113,7 +114,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_SHORTEST_WAY_SAFETY)
 
     # Taking the shortest path to trap an opp
-    if shortest_way_trap == "None" or self.shortest_way_safety != 'None':
+    if shortest_way_trap == "None" or shortest_way_safety != 'None':
         pass
     elif self_action == shortest_way_trap:
         events.append(SHORTEST_WAY_TRAP)
@@ -127,12 +128,14 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_STEP_ONE_BOMB)
 
     # Good Bombs destroy crates or put opps in danger
-    if old_game_state['self'][2]:
+    if not old_game_state['self'][2]:
         pass
-    elif self_action == 'BOMB' and self.shortest_way_crate == 'BOMB':
+    elif self_action == 'BOMB' and shortest_way_crate == 'BOMB':
         events.append(GOOD_BOMB)
     elif self_action == 'BOMB':
         events.append(BAD_BOMB)
+    elif self.shortest_way_crate == 'BOMB' and self_action != 'BOMB':
+        events.append(MISSED_BOMB)
 
     # Reward for trapping opp
     if self.bomb_for_trap == 1 and self_action == 'BOMB':
@@ -140,7 +143,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     elif self.bomb_for_trap == 1 and self_action != 'BOMB':
         events.append(MISSED_TRAP)
 
-    reward = reward_from_events(self, events, new_game_state['self'][1])
+    reward = reward_from_events(self, events)
 
     # augment the dataset
     # state to features is non-deterministic, calling multiple times can cause problems
@@ -213,7 +216,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         case 4:
             events.append("FOURTH")
 
-    reward = reward_from_events(self, events, last_game_state['self'][1])
+    reward = reward_from_events(self, events)
 
     # augment the dataset
     # state to features not needed
@@ -253,7 +256,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     plot(self.plot_scores, self.plot_mean_scores)
 
 
-def reward_from_events(self, events: List[str], score) -> int:
+def reward_from_events(self, events: List[str]) -> int:
     """
     *This is not a required function, but an idea to structure your code.*
 
@@ -279,8 +282,6 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.COIN_COLLECTED: +1,
         e.KILLED_SELF: -1,
         e.INVALID_ACTION: -1,
-        LOOP: -1,
-        NO_LOOP: +1,
         SHORTEST_WAY_COIN: +1,
         NOT_SHORTEST_WAY_COIN: -1,
         SHORTEST_WAY_SAFETY: +1,
@@ -301,15 +302,16 @@ def reward_from_events(self, events: List[str], score) -> int:
         STEP_ONE_BOMB: -0,
         NOT_STEP_ONE_BOMB: +0,
         GOOD_BOMB: +1,
-        BAD_BOMB: -1,
-        LOOP: 0,
+        BAD_BOMB: -2,
+        MISSED_BOMB: -2,
+        LOOP: -2,
         NO_LOOP: +0,
-        SHORTEST_WAY_COIN: +1,
-        NOT_SHORTEST_WAY_COIN: -1,
-        SHORTEST_WAY_CRATE: +2,
-        NOT_SHORTEST_WAY_CRATE: -1,
+        SHORTEST_WAY_COIN: +2,
+        NOT_SHORTEST_WAY_COIN: -3,
+        SHORTEST_WAY_CRATE: +1,
+        NOT_SHORTEST_WAY_CRATE: -2,
         SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1
+        NOT_SHORTEST_WAY_SAFETY: -3
     }
 
     # Stage 3

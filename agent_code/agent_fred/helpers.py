@@ -1,6 +1,6 @@
 import copy
 from collections import deque
-
+from random import shuffle
 import matplotlib.pyplot as plt
 import numpy as np
 from IPython import display
@@ -183,7 +183,7 @@ def look_for_targets(free_space, start, targets, logger=None):
         # Add unexplored free neighboring tiles to the queue in a random order
         x, y = current
         neighbors = [(x, y) for (x, y) in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] if free_space[x, y]]
-        # shuffle(neighbors)
+        shuffle(neighbors)
         for neighbor in neighbors:
             if neighbor not in parent_dict:
                 frontier.append(neighbor)
@@ -453,7 +453,7 @@ def closest_target_dist(game_state: dict, coord: (int, int), targets: list[(int,
     return 10_000
 
 
-def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), direction: (int, int), max_step: int) -> int:
+def best_explosion_score(game_state: dict, coord: (int, int), direction: (int, int), max_step: int) -> int:
     """
     Get the highest explosion score for any tile reachable in max_step steps in the specified direction.
     """
@@ -470,7 +470,7 @@ def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), directio
     while len(tile_queue) > 0:
         x, y, step = tile_queue.popleft()
 
-        best_score = max(best_score, explosion_score(game_state, bomb_map, x, y))
+        best_score = max(best_score, explosion_score(game_state, x, y))
 
         if step >= max_step:
             continue
@@ -494,13 +494,23 @@ def best_explosion_score(game_state: dict, bomb_map, coord: (int, int), directio
     return best_score
 
 
-def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
+def explosion_score(game_state: dict, x: int, y: int) -> float:
+
+    if (x, y) == (1, 1) or (x, y) == (1, 15) or (x, y) == (15, 1) or (x, y) == (15, 15):
+        return 0
+
+    bomb_map = build_bomb_map(game_state)
+    others = [xy for (n, s, b, xy) in game_state['others']]
+
     crate_score = 0
+    opp_score = 0
     for i in range(1, 4):
         if in_field(x + i, y, game_state) and game_state['field'][x + i, y] != -1:
             if game_state['field'][x + i, y] == 1 and bomb_map[x + i, y] == 100 and \
                     game_state['explosion_map'][x + i, y] == 0:
                 crate_score += 1
+            if (x + i, y) in others and game_state['explosion_map'][x + i, y] == 0:
+                opp_score += 1
         else:
             break
     for i in range(1, 4):
@@ -508,6 +518,8 @@ def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
             if game_state['field'][x - i, y] == 1 and bomb_map[x - i, y] == 100 and \
                     game_state['explosion_map'][x - i, y] == 0:
                 crate_score += 1
+            if (x - i, y) in others and game_state['explosion_map'][x - i, y] == 0:
+                opp_score += 1
         else:
             break
     for i in range(1, 4):
@@ -515,6 +527,8 @@ def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
             if game_state['field'][x, y + i] == 1 and bomb_map[x, y + i] == 100 and \
                     game_state['explosion_map'][x, y + i] == 0:
                 crate_score += 1
+            if (x, y + i) in others and game_state['explosion_map'][x, y + i] == 0:
+                opp_score += 1
         else:
             break
     for i in range(1, 4):
@@ -522,13 +536,50 @@ def explosion_score(game_state: dict, bomb_map, x: int, y: int) -> float:
             if game_state['field'][x, y - i] == 1 and bomb_map[x, y - i] == 100 and \
                     game_state['explosion_map'][x, y - i] == 0:
                 crate_score += 1
+            if (x, y - i) in others and game_state['explosion_map'][x, y - i] == 0:
+                opp_score += 1
         else:
             break
 
-    return crate_score / 10
+    return crate_score / 10 + opp_score / 3
 
 
 def safe_tile_reachable(x, y, escape_space, safe_tiles) -> bool:
+    dir_safety = look_for_targets(escape_space, (x, y), safe_tiles)
+    if dir_safety is None or (x, y) == dir_safety:
+        return False
+    else:
+        return True
+
+
+def safe_tile_reachable2(x, y, game_state) -> bool:
+    arena = game_state['field']
+    cols = range(1, arena.shape[0] - 1)
+    rows = range(1, arena.shape[0] - 1)
+
+    bomb_map = build_bomb_map(game_state)
+    explosions = game_state['explosion_map']
+    empty_tiles = [(x, y) for x in cols for y in rows if (arena[x, y] == 0)]
+    bomb_xys = [xy for (xy, t) in game_state['bombs']]
+
+    safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
+                  explosions[tile[0], tile[1]] == 0]
+
+    escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and tile not in bomb_xys]
+
+    free_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
+    for tile in safe_tiles:
+        free_space[tile[0], tile[1]] = True
+
+    escape_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
+    for tile in escape_tiles:
+        escape_space[tile[0], tile[1]] = True
+
+    others = [xy for (n, s, b, xy) in game_state['others']]
+    for o in others:
+        free_space[o] = False
+        escape_space[o] = False
+
     dir_safety = look_for_targets(escape_space, (x, y), safe_tiles)
     if dir_safety is None or (x, y) == dir_safety:
         return False

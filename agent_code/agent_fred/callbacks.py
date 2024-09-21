@@ -6,9 +6,6 @@ import numpy as np
 import math
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 
 from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir,
                       find_traps, best_explosion_score, explosion_score)
@@ -19,6 +16,7 @@ device = torch.device(
     'cuda' if torch.cuda.is_available() else
     'mps' if torch.backends.mps.is_available() else
     'cpu')
+device = 'cpu'
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 # up: -y
@@ -28,7 +26,7 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 50
+EPS_DECAY = 120
 
 FORCE_BOMBS = False
 
@@ -52,6 +50,7 @@ def setup(self):
     self.shortest_way_coin = "None"
     self.shortest_way_crate = "None"
     self.shortest_way_safety = "None"
+    self.shortest_way_trap = "None"
     self.steps = 0
     self.touching_crate = 0
     self.bomb_cooldown = 0
@@ -279,12 +278,12 @@ def state_to_features(self, game_state: dict) -> np.array:
     dir_safety = look_for_targets(escape_space, (self_x, self_y), safe_tiles)
 
     # find best explosion direction
-    max_steps = self.bomb_cooldown + 2
-    explosion_score_up = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, -1), max_steps)
-    explosion_score_right = best_explosion_score(game_state, bomb_map, (self_x, self_y), (1, 0), max_steps)
-    explosion_score_down = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, 1), max_steps)
-    explosion_score_left = best_explosion_score(game_state, bomb_map, (self_x, self_y), (-1, 0), max_steps)
-    explosion_score_stay = explosion_score(game_state, bomb_map, self_x, self_y)
+    max_steps = self.bomb_cooldown + 5
+    explosion_score_up = best_explosion_score(game_state, (self_x, self_y), (0, -1), max_steps)
+    explosion_score_right = best_explosion_score(game_state, (self_x, self_y), (1, 0), max_steps)
+    explosion_score_down = best_explosion_score(game_state, (self_x, self_y), (0, 1), max_steps)
+    explosion_score_left = best_explosion_score(game_state, (self_x, self_y), (-1, 0), max_steps)
+    explosion_score_stay = explosion_score(game_state, self_x, self_y)
 
     explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
                         explosion_score_stay]
