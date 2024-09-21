@@ -7,12 +7,12 @@ import copy
 
 DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 
-def find_closest_target(game_state: dict, start: (int, int), targets: list[(int, int)]) -> list[(int, int)] | None:
+def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(int, int)] | None:
     """
     Find the closest reachable target from the start position using BFS.
 
     Args:
-        game_state: the current game state.
+        passable_spots: Boolean numpy array. True for tiles the player can move on, false otherwise.
         start: the starting position.
         targets: the list of possible target positions.
     Returns:
@@ -34,19 +34,19 @@ def find_closest_target(game_state: dict, start: (int, int), targets: list[(int,
             best = (x, y, step)
             break
 
-        if passable(x + 1, y, game_state) and (x + 1, y) not in parents:
+        if passable_spots[x + 1, y] and (x + 1, y) not in parents:
             tile_queue.append((x + 1, y, step + 1))
             parents[(x + 1, y)] = (x, y)
 
-        if passable(x - 1, y, game_state) and (x - 1, y) not in parents:
+        if passable_spots[x + 1, y] and (x - 1, y) not in parents:
             tile_queue.append((x - 1, y, step + 1))
             parents[(x - 1, y)] = (x, y)
 
-        if passable(x, y + 1, game_state) and (x, y + 1) not in parents:
+        if passable_spots[x + 1, y] and (x, y + 1) not in parents:
             tile_queue.append((x, y + 1, step + 1))
             parents[(x, y + 1)] = (x, y)
 
-        if passable(x, y - 1, game_state) and (x, y - 1) not in parents:
+        if passable_spots[x + 1, y] and (x, y - 1) not in parents:
             tile_queue.append((x, y - 1, step + 1))
             parents[(x, y - 1)] = (x, y)
 
