@@ -1,11 +1,12 @@
-import numpy as np
-from random import shuffle
-from collections import deque
-from IPython import display
-import matplotlib.pyplot as plt
 import copy
+from collections import deque
+
+import matplotlib.pyplot as plt
+import numpy as np
+from IPython import display
 
 DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
+
 
 def in_bounds(array: np.ndarray, *indices: int) -> bool:
     """
@@ -19,7 +20,8 @@ def in_bounds(array: np.ndarray, *indices: int) -> bool:
     return True
 
 
-def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(int, int)] | None:
+def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(
+int, int)] | None:
     """
     Find the closest reachable target from the start position using BFS.
 
@@ -63,6 +65,78 @@ def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: 
 
     path.reverse()
     return path
+
+
+def guaranteed_passable_tiles(game_state: dict) -> np.ndarray:
+    """
+    Find all tiles that are guaranteed to be reachable and the number of steps to reach them.
+    """
+    passable_tiles = np.full(game_state['field'].shape, -2)
+    tile_queue = deque()
+
+    for player in game_state['others']:
+        tile_queue.append((player[3][0], player[3][1], False, 0))
+        passable_tiles[player[3][0], player[3][1]] = -1
+
+    self_x, self_y = game_state['self'][3]
+    tile_queue.append((self_x, self_y, True, 0))
+    passable_tiles[self_x, self_y] = 0
+
+    # Simulate steps of all agents until all reachable tiles are explored.
+    while len(tile_queue) > 0:
+        x, y, is_self, step = tile_queue.popleft()
+
+        for direction in DIRECTIONS:
+            x2, y2 = x + direction[0], y + direction[1]
+            if not (passable(x2, y2, game_state) and passable_tiles[x2, y2] == -2):
+                continue
+            tile_queue.append((x2, y2, is_self, step + 1))
+            if is_self:
+                passable_tiles[x2, y2] = step + 1
+            else:
+                passable_tiles[x2, y2] = -1
+    return passable_tiles
+
+
+def connections(game_state: dict, x: int, y: int) -> list[(int, int)]:
+    """
+    Return coordinates of all free neighboring tiles.
+    """
+    if not passable(x, y, game_state):
+        return []
+
+    free = []
+    for direction in DIRECTIONS:
+        x2, y2 = x + direction[0], y + direction[1]
+        if passable(x2, y2, game_state):
+            free.append((x2, y2))
+    return free
+
+
+def is_dead_end(game_state: dict, x: int, y: int) -> bool:
+    """
+    Check if a tile leads to a dead end.
+    """
+    if not passable(x, y, game_state):
+        return False
+
+    tile_queue = deque([(x, y)])
+    visited = np.zeros(game_state['field'].shape)
+
+    while len(tile_queue) > 0:
+        x, y = tile_queue.popleft()
+        visited[x, y] = 1
+        conns = connections(game_state, x, y)
+        if len(conns) == 1:
+            return True
+        if len(conns) > 2:
+            continue
+
+        for x2, y2 in conns:
+            if visited[x2, y2] == 0:
+                tile_queue.append((x2, y2))
+
+    return False
 
 
 def look_for_targets(free_space, start, targets, logger=None):
