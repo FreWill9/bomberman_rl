@@ -11,8 +11,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir,
-                      find_traps, best_explosion_score, explosion_score)
-from .model import QNet
+                      find_traps, best_explosion_score, explosion_score, passable)
+from .model import QNet, QNet2
 
 # if GPU is to be used
 device = torch.device(
@@ -59,7 +59,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(26, 1024, 1024, 6)
+        self.model = QNet2(26, 1024, 2048, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:

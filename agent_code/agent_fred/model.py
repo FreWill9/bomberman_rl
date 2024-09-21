@@ -1,4 +1,4 @@
-from collections import namedtuple, deque
+from collections import deque
 import random
 
 import torch
@@ -26,6 +26,32 @@ class QNet(nn.Module):
 
     def clone(self):
         net = QNet(self.input_size, self.hidden_size1, self.hidden_size2, self.output_size)
+        net.load_state_dict(self.state_dict())
+        return net
+
+class QNet2(nn.Module):
+    def __init__(self, input_size, hidden_size1, hidden_size2, output_size):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size1 = hidden_size1
+        self.hidden_size2 = hidden_size2
+        self.output_size = output_size
+        self.linear1 = nn.Linear(input_size, hidden_size1)
+        self.linear2 = nn.Linear(hidden_size1, hidden_size1)
+        self.linear3 = nn.Linear(hidden_size1, hidden_size2)
+        self.linear4 = nn.Linear(hidden_size2, hidden_size2)
+        self.linear5 = nn.Linear(hidden_size2, output_size)
+
+    def forward(self, x):
+        x = F.relu(self.linear1(x))
+        x = F.relu(self.linear2(x))
+        x = F.relu(self.linear3(x))
+        # x = F.relu(self.linear4(x))
+        x = self.linear5(x)
+        return x
+
+    def clone(self):
+        net = QNet2(self.input_size, self.hidden_size1, self.hidden_size2, self.output_size)
         net.load_state_dict(self.state_dict())
         return net
 
