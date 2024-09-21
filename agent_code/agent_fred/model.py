@@ -31,18 +31,19 @@ class QNet(nn.Module):
 
 
 class DQN:
-    def __init__(self, model: QNet, lr, gamma):
+    def __init__(self, model: QNet, lr, gamma, device):
         self.lr = lr
         self.gamma = gamma
         self.model = model
         self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
         self.criterion = nn.SmoothL1Loss()
+        self.device = device
 
     def train(self, state, action, reward, next_state, done):
-        state = tensor(state, dtype=torch.float)
-        action = tensor(action, dtype=torch.float)
-        reward = tensor(reward, dtype=torch.float)
-        next_state = tensor(next_state, dtype=torch.float)
+        state = tensor(state, dtype=torch.float).to(self.device)
+        action = tensor(action, dtype=torch.float).to(self.device)
+        reward = tensor(reward, dtype=torch.float).to(self.device)
+        next_state = tensor(next_state, dtype=torch.float).to(self.device)
 
         if len(state.shape) == 1:
             state = torch.unsqueeze(state, 0)
@@ -73,17 +74,18 @@ class DQN:
 
 
 class DQN2:
-    def __init__(self, model: QNet, lr, gamma, learning_rate, batch_size, max_memory=40000):
+    def __init__(self, model: QNet, lr, gamma, learning_rate, batch_size, max_memory, device):
         self.lr = lr
         self.gamma = gamma
         self.learning_rate = learning_rate
         self.model = model
-        self.target_model = model.clone()
+        self.target_model = model.clone().to(device)
         self.batch_size = batch_size
         self.memory = deque(maxlen=max_memory)
         self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
         self.criterion = nn.SmoothL1Loss()
         self.step = 0
+        self.device = device
 
     def train(self, state, action, reward, next_state, done):
         self.step += 1
@@ -103,10 +105,10 @@ class DQN2:
 
         states, actions, rewards, next_states, dones = zip(*mini_sample)
 
-        states = tensor(states, dtype=torch.float)
-        actions = tensor(actions, dtype=torch.float)
-        rewards = tensor(rewards, dtype=torch.float)
-        next_states = tensor(next_states, dtype=torch.float)
+        states = tensor(states, dtype=torch.float).to(self.device)
+        actions = tensor(actions, dtype=torch.float).to(self.device)
+        rewards = tensor(rewards, dtype=torch.float).to(self.device)
+        next_states = tensor(next_states, dtype=torch.float).to(self.device)
 
         pred = self.model(states)
         target_model_pred = self.target_model(next_states)
@@ -120,7 +122,7 @@ class DQN2:
                 q_new = rewards[i]
 
             action_idx = int(actions[i].item())
-            target[i][action_idx] = (1 - self.learning_rate) * target[i][action_idx] + self.learning_rate * q_new
+            target[i][action_idx] = q_new
 
         self.optimizer.zero_grad()
         loss = self.criterion(pred, target)

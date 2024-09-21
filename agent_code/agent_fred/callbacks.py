@@ -59,11 +59,14 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(26, 1024, 1024, 6).to(device)
+        self.model = QNet(26, 1024, 1024, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
             self.model = pickle.load(file)
+
+    self.logger.info(f"Using device: {device}")
+    self.model.to(device)
 
 
 def act(self, game_state: dict) -> str:
@@ -108,7 +111,7 @@ def choose_action(self, game_state: dict) -> str:
 
     self.logger.debug("Querying model for action.")
 
-    features = torch.tensor(self.features, dtype=torch.float)
+    features = torch.tensor(self.features, dtype=torch.float).to(device)
     prediction = self.model(features)
     action = ACTIONS[torch.argmax(prediction).item()]
 

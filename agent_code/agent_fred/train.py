@@ -11,19 +11,19 @@ from .helpers import encode_action, plot, mirror_action, mirror_feature_vector
 from .custom_events import *
 from .model import QNet, DQN, DQN2
 
-# if GPU is to be used
-device = torch.device(
-    "cuda" if torch.cuda.is_available() else
-    "mps" if torch.backends.mps.is_available() else
-    "cpu")
 
 # This is only an example!
 Memory = namedtuple('Memory',
                     ('state', 'action', 'reward', 'next_state', 'done'))
 
+device = torch.device(
+    'cuda' if torch.cuda.is_available() else
+    'mps' if torch.backends.mps.is_available() else
+    'cpu')
+
 # Hyperparameters -- DO modify
 MAX_MEMORY = 40_000
-BATCH_SIZE = 64
+BATCH_SIZE = 256
 LR = 0.001
 
 plot_maxlen = 100
@@ -49,7 +49,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.trainer = DQN2(self.model, lr=LR, gamma=self.gamma, learning_rate=0.7, batch_size=BATCH_SIZE, max_memory=MAX_MEMORY)
+    self.trainer = DQN2(self.model, lr=LR, gamma=self.gamma, learning_rate=0.7, batch_size=BATCH_SIZE, max_memory=MAX_MEMORY, device=device)
 
 
 def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]):
