@@ -98,38 +98,44 @@ def guaranteed_passable_tiles(game_state: dict) -> np.ndarray:
     return passable_tiles
 
 
-def connections(game_state: dict, x: int, y: int) -> list[(int, int)]:
+def connections(passable_spots: np.ndarray, x: int, y: int) -> list[(int, int)]:
     """
     Return coordinates of all free neighboring tiles.
     """
-    if not passable(x, y, game_state):
-        return []
-
     free = []
     for direction in DIRECTIONS:
         x2, y2 = x + direction[0], y + direction[1]
-        if passable(x2, y2, game_state):
+        if in_bounds(passable_spots, x2, y2) and passable_spots[x2, y2]:
             free.append((x2, y2))
     return free
 
 
-def is_dead_end(game_state: dict, x: int, y: int) -> bool:
+def is_straight_dead_end(passable_spots: np.ndarray, x: int, y: int) -> bool:
     """
-    Check if a tile leads to a dead end.
+    Check if a tile leads to a dead end in a straight line.
     """
-    if not passable(x, y, game_state):
-        return False
-
     tile_queue = deque([(x, y)])
-    visited = np.zeros(game_state['field'].shape)
+    visited = np.zeros(passable_spots.shape)
+
+    directions_set = set()
+
 
     while len(tile_queue) > 0:
         x, y = tile_queue.popleft()
         visited[x, y] = 1
-        conns = connections(game_state, x, y)
+        conns = connections(passable_spots, x, y)
         if len(conns) == 1:
+            # Dead end reached
             return True
         if len(conns) > 2:
+            # The path splits
+            continue
+
+        directions = [(x2 - x, y2 - y) for x2, y2 in conns]
+        if len(directions_set) == 0:
+            directions_set = set(directions)
+        elif directions_set != set(directions):
+            # The path bends
             continue
 
         for x2, y2 in conns:
