@@ -7,6 +7,18 @@ import copy
 
 DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 
+def in_bounds(array: np.ndarray, *indices: int) -> bool:
+    """
+    Check if the indices are within the bounds of a numpy array.
+    """
+    if len(indices) > len(array.shape):
+        return False
+    for i, idx in enumerate(indices):
+        if idx < 0 or idx >= array.shape[i]:
+            return False
+    return True
+
+
 def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(int, int)] | None:
     """
     Find the closest reachable target from the start position using BFS.
@@ -34,21 +46,11 @@ def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: 
             best = (x, y, step)
             break
 
-        if passable_spots[x + 1, y] and (x + 1, y) not in parents:
-            tile_queue.append((x + 1, y, step + 1))
-            parents[(x + 1, y)] = (x, y)
-
-        if passable_spots[x + 1, y] and (x - 1, y) not in parents:
-            tile_queue.append((x - 1, y, step + 1))
-            parents[(x - 1, y)] = (x, y)
-
-        if passable_spots[x + 1, y] and (x, y + 1) not in parents:
-            tile_queue.append((x, y + 1, step + 1))
-            parents[(x, y + 1)] = (x, y)
-
-        if passable_spots[x + 1, y] and (x, y - 1) not in parents:
-            tile_queue.append((x, y - 1, step + 1))
-            parents[(x, y - 1)] = (x, y)
+        for direction in DIRECTIONS:
+            x2, y2 = x + direction[0], y + direction[1]
+            if in_bounds(passable_spots, x2, y2) and passable_spots[x2, y2] and (x2, y2) not in parents:
+                tile_queue.append((x2, y2, step + 1))
+                parents[(x2, y2)] = (x, y)
 
     if best is None:
         return None
