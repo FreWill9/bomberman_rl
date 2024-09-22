@@ -135,12 +135,7 @@ def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
     tile_queue = deque()
 
     bombs = copy.deepcopy(game_state['bombs'])
-    exploded = [xy for xy, t in bombs if t < 1]
-    bombs = [(xy, t) for xy, t in bombs if t >= 1]
-    explosions = copy.deepcopy(game_state['explosion_map'])
-    for x2, y2 in exploded:
-        explosion = bomb_explosion_map(game_state, x2, y2) * 2
-        explosions = np.maximum(explosions, explosion)
+    explosions = copy.deepcopy(game_state['explosion_map']) * 2
 
     for player in game_state['others']:
         tile_queue.append((player[3][0], player[3][1], False, 0))
@@ -159,9 +154,9 @@ def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
             continue
 
         if step != prev_step:
-            # Update bombs and explosions (bombs explode at 0 already)
-            exploded = [xy for xy, t in bombs if t <= 1]
-            bombs = [(xy, t - 1) for xy, t in bombs if t > 1]
+            # Update bombs and explosions
+            exploded = [xy for xy, t in bombs if t <= 0]
+            bombs = [(xy, t - 1) for xy, t in bombs if t > 0]
             explosions = np.maximum(0, explosions - 1)
             for x2, y2 in exploded:
                 explosion = bomb_explosion_map(game_state, x2, y2) * 2
@@ -390,68 +385,6 @@ def plot(scores, mean_scores):
     plt.pause(.1)
 
 
-def mirror_game_state(game_state: dict) -> (dict, dict, dict):
-    x = copy.deepcopy(game_state)
-    y = copy.deepcopy(game_state)
-    xy = copy.deepcopy(game_state)
-    size_x = game_state['field'].shape[0]
-    size_y = game_state['field'].shape[1]
-
-    x['field'] = np.flipud(game_state['field'])
-    y['field'] = np.fliplr(game_state['field'])
-    xy['field'] = np.flipud(np.fliplr(game_state['field']))
-
-    for i in range(len(game_state['bombs'])):
-        x['bombs'][i] = ((abs(size_x - 1 - game_state['bombs'][i][0][0]), game_state['bombs'][i][0][1]),
-                         game_state['bombs'][i][1])
-        y['bombs'][i] = ((game_state['bombs'][i][0][0], abs(size_y - 1 - game_state['bombs'][i][0][1])),
-                         game_state['bombs'][i][1])
-        xy['bombs'][i] = ((abs(size_x - 1 - game_state['bombs'][i][0][0]),
-                           abs(size_y - 1 - game_state['bombs'][i][0][1])),
-                          game_state['bombs'][i][1])
-
-    x['explosion_map'] = np.flipud(game_state['explosion_map'])
-    y['explosion_map'] = np.fliplr(game_state['explosion_map'])
-    xy['explosion_map'] = np.flipud(np.fliplr(game_state['explosion_map']))
-
-    for i in range(len(game_state['coins'])):
-        x['coins'][i] = (abs(size_x - 1 - game_state['coins'][i][0]), game_state['coins'][i][1])
-        y['coins'][i] = (game_state['coins'][i][0], abs(size_y - 1 - game_state['coins'][i][1]))
-        xy['coins'][i] = (abs(size_x - 1 - game_state['coins'][i][0]), abs(size_y - 1 - game_state['coins'][i][1]))
-
-    x['self'] = (game_state['self'][0], game_state['self'][1], game_state['self'][2],
-                 (abs(size_x - 1 - game_state['self'][3][0]), game_state['self'][3][1]))
-    y['self'] = (game_state['self'][0], game_state['self'][1], game_state['self'][2],
-                 (game_state['self'][3][0], abs(size_y - 1 - game_state['self'][3][1])))
-    xy['self'] = (game_state['self'][0], game_state['self'][1], game_state['self'][2],
-                  (abs(size_x - 1 - game_state['self'][3][0]), abs(size_y - 1 - game_state['self'][3][1])))
-
-    for i in range(len(game_state['others'])):
-        x['others'][i] = (game_state['others'][i][0], game_state['others'][i][1], game_state['others'][i][2],
-                          (abs(size_x - 1 - game_state['others'][i][3][0]), game_state['others'][i][3][1]))
-        y['others'][i] = (game_state['others'][i][0], game_state['others'][i][1], game_state['others'][i][2],
-                          (game_state['others'][i][3][0], abs(size_y - 1 - game_state['others'][i][3][1])))
-        xy['others'][i] = (game_state['others'][i][0], game_state['others'][i][1], game_state['others'][i][2],
-                           (abs(size_x - 1 - game_state['others'][i][3][0]),
-                            abs(size_y - 1 - game_state['others'][i][3][1])))
-
-    return x, y, xy
-
-
-def mirror_action(action: str) -> (str, str, str):
-    match action:
-        case 'UP':
-            return 'UP', 'DOWN', 'DOWN'
-        case 'RIGHT':
-            return 'LEFT', 'RIGHT', 'LEFT'
-        case 'DOWN':
-            return 'DOWN', 'UP', 'UP'
-        case 'LEFT':
-            return 'RIGHT', 'LEFT', 'RIGHT'
-        case _:
-            return action, action, action
-
-
 def transform_action(action: str):
     """
     Transform an action in all ways.
@@ -487,18 +420,18 @@ def transform_feature_vector(feature_vector: np.ndarray):
      tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
      tile_freq_stay,
      coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left,
-     is_dangerous_up, is_dangerous_right, is_dangerous_down, is_dangerous_left,
-     is_dangerous_stay) = tuple(feature_vector)
+     is_safe_up, is_safe_right, is_safe_down, is_safe_left,
+     is_safe_stay) = tuple(feature_vector)
 
     safety_distances = [safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left]
     tile_freq = [tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left]
     coin_distances = [coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left]
-    is_dangerous = [is_dangerous_up, is_dangerous_right, is_dangerous_down, is_dangerous_left]
+    is_safe = [is_safe_up, is_safe_right, is_safe_down, is_safe_left]
 
     safety_distances_t = transform_directional_feature(safety_distances)
     tile_freq_t = transform_directional_feature(tile_freq)
     coin_distances_t = transform_directional_feature(coin_distances)
-    is_dangerous_t = transform_directional_feature(is_dangerous)
+    is_safe_t = transform_directional_feature(is_safe)
 
     transformations = []
     for i in range(len(safety_distances_t)):
@@ -507,19 +440,14 @@ def transform_feature_vector(feature_vector: np.ndarray):
                                          *tile_freq_t[i],
                                          tile_freq_stay,
                                          *coin_distances_t[i],
-                                         *is_dangerous_t[i],
-                                         is_dangerous_stay]))
+                                         *is_safe_t[i],
+                                         is_safe_stay]))
 
     return tuple(transformations)
 
 
 def passable(x, y, game_state):
-    explosions = copy.deepcopy(game_state['explosion_map'])
-    exploded = [xy for xy, t in game_state['bombs'] if t < 1]
-
-    for x2, y2 in exploded:
-        explosion = bomb_explosion_map(game_state, x2, y2) * 2
-        explosions = np.maximum(explosions, explosion)
+    explosions = game_state['explosion_map']
 
     return (in_field(x, y, game_state) and game_state['field'][x, y] == 0
             and (x, y) not in [(int(x2), int(y2)) for (x2, y2), t in game_state['bombs']]
