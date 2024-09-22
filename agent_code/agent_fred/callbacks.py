@@ -32,7 +32,7 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 50
 
-FORCE_BOMBS = True
+FORCE_BOMBS = False
 
 
 def setup(self):
@@ -61,7 +61,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(16, 1024, 2048, 6)
+        self.model = QNet(17, 1024, 2048, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -206,9 +206,11 @@ def state_to_features(self, game_state: dict) -> np.array:
         if not passable(x2, y2, game_state):
             continue
         tile_freq[i] = 1 / (self.coordinate_history.count((x2, y2)) + 1)
+    tile_freq_stay = 1 / (self.coordinate_history.count((self_x, self_y)) + 1)
 
-    # +4 features
+    # +5 features
     features.extend(tile_freq)
+    features.append(tile_freq_stay)
 
 
     # Distance to coins
