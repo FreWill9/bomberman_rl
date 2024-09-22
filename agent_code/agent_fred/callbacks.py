@@ -226,6 +226,9 @@ def state_to_features(self, game_state: dict) -> np.array:
     # +4 features
     features.extend(coin_distances)
 
+    # TODO avoid dangerous tiles
+    # TODO place good bombs
+
     return features
 
 
