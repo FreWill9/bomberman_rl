@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from .callbacks import state_to_features
-from .helpers import encode_action, plot, mirror_action, mirror_feature_vector
+from .helpers import encode_action, plot, transform_action, transform_feature_vector
 from .custom_events import *
 from .model import QNet, DQN, DQN2
 
@@ -147,21 +147,18 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     state_old_features = self.features
     state_new_features = state_to_features(self, new_game_state)
 
-    x_old_features, y_old_features, xy_old_features = mirror_feature_vector(state_old_features)
-    x_new_features, y_new_features, xy_new_features = mirror_feature_vector(state_new_features)
-    x_act, y_act, xy_act = mirror_action(self_action)
+    old_features_t = transform_feature_vector(state_old_features)
+    new_features_t = transform_feature_vector(state_new_features)
+    act_t = transform_action(self_action)
 
     # encode_action
     action_enc = encode_action(self_action)
 
-    x_act_enc = encode_action(x_act)
-    y_act_enc = encode_action(y_act)
-    xy_act_enc = encode_action(xy_act)
+    act_enc_t = tuple([encode_action(act) for act in act_t])
 
     self.trainer.train(state_old_features, action_enc, reward, state_new_features, False)
-    self.trainer.train(x_old_features, x_act_enc, reward, x_new_features, False)
-    self.trainer.train(y_old_features, y_act_enc, reward, y_new_features, False)
-    self.trainer.train(xy_old_features, xy_act_enc, reward, xy_new_features, False)
+    for i in range(7):
+        self.trainer.train(old_features_t[i], act_enc_t[i], reward, new_features_t[i], False)
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
@@ -210,14 +207,12 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     # state to features not needed
     last_state_features = self.features
     # mirror game-states and actions on x, y and both axes:
-    x_last_features, y_last_features, xy_last_features = mirror_feature_vector(last_state_features)
-    x_act, y_act, xy_act = mirror_action(last_action)
+    last_features_t = transform_feature_vector(last_state_features)
+    act_t = transform_action(last_action)
 
     # encode actions
     last_action_enc = encode_action(last_action)
-    x_act_enc = encode_action(x_act)
-    y_act_enc = encode_action(y_act)
-    xy_act_enc = encode_action(xy_act)
+    act_enc_t = tuple([encode_action(act) for act in act_t])
 
     # remember
     # self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
@@ -227,9 +222,8 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     # train short term memory
     self.trainer.train(last_state_features, last_action_enc, reward, last_state_features, True)
-    self.trainer.train(x_last_features, x_act_enc, reward, x_last_features, True)
-    self.trainer.train(y_last_features, y_act_enc, reward, y_last_features, True)
-    self.trainer.train(xy_last_features, xy_act_enc, reward, xy_last_features, True)
+    for i in range(7):
+        self.trainer.train(last_features_t[i], act_enc_t[i], reward, last_features_t[i], True)
 
     # Store the model
     with open("my-saved-model.pt", "wb") as file:

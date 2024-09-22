@@ -1,5 +1,6 @@
 import copy
 from collections import deque
+from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -452,12 +453,36 @@ def mirror_action(action: str) -> (str, str, str):
             return action, action, action
 
 
-def mirror_directional_feature(feature: list[float]) -> (list[float], list[float], list[float]):
+def transform_action(action: str):
+    """
+    Transform an action in all ways.
+    """
+    dirs = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+    if action not in dirs:
+        return (action, ) * 7
+    action_indx = dirs.index(action)
+    dirst_t = transform_directional_feature(dirs)
+    return list(zip(*dirst_t))[action_indx]
+
+
+def transform_directional_feature(feature: list):
+    """
+    Transform a directional feature vector by mirroring and rotating it.
+    Returns a tuple of the features mirrored by x and y axes and rotated by 90, 180 and 270 degrees clockwise and
+     mirrored diagonally in both directions.
+    """
     up, right, down, left = tuple(feature)
-    return (up, left, down, right), (down, right, up, left), (down, left, up, right)
+    return ((up, left, down, right), (down, right, up, left),
+            (left, up, right, down), (down, left, up, right), (right, down, left, up),
+            (left, down, right, up), (right, up, left, down))
 
 
-def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
+def transform_feature_vector(feature_vector: np.ndarray):
+    """
+    Transform the feature vector by mirroring and rotating directional features.
+    Returns a tuple of the features mirrored by x and y axes and rotated by 90, 180 and 270 degrees clockwise and
+     mirrored diagonally in both directions.
+    """
     (bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
      safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left,
      tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
@@ -471,36 +496,22 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
     coin_distances = [coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left]
     is_dangerous = [is_dangerous_up, is_dangerous_right, is_dangerous_down, is_dangerous_left]
 
-    safety_distances_x, safety_distances_y, safety_distances_xy = mirror_directional_feature(safety_distances)
-    tile_freq_x, tile_freq_y, tile_freq_xy = mirror_directional_feature(tile_freq)
-    coin_distances_x, coin_distances_y, coin_distances_xy = mirror_directional_feature(coin_distances)
-    is_dangerous_x, is_dangerous_y, is_dangerous_xy = mirror_directional_feature(is_dangerous)
+    safety_distances_t = transform_directional_feature(safety_distances)
+    tile_freq_t = transform_directional_feature(tile_freq)
+    coin_distances_t = transform_directional_feature(coin_distances)
+    is_dangerous_t = transform_directional_feature(is_dangerous)
 
-    x = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
-                  *safety_distances_x,
-                  *tile_freq_x,
-                  tile_freq_stay,
-                  *coin_distances_x,
-                  *is_dangerous_x,
-                  is_dangerous_stay])
+    transformations = []
+    for i in range(7):
+        transformations.append(np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
+                                         *safety_distances_t[i],
+                                         *tile_freq_t[i],
+                                         tile_freq_stay,
+                                         *coin_distances_t[i],
+                                         *is_dangerous_t[i],
+                                         is_dangerous_stay]))
 
-    y = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
-                  *safety_distances_y,
-                  *tile_freq_y,
-                  tile_freq_stay,
-                  *coin_distances_y,
-                  *is_dangerous_y,
-                  is_dangerous_stay])
-
-    xy = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
-                   *safety_distances_xy,
-                   *tile_freq_xy,
-                   tile_freq_stay,
-                   *coin_distances_xy,
-                   *is_dangerous_xy,
-                   is_dangerous_stay])
-
-    return x, y, xy
+    return tuple(transformations)
 
 
 def passable(x, y, game_state):
