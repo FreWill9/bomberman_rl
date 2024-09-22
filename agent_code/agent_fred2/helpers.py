@@ -8,6 +8,19 @@ from IPython import display
 DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 
 
+def bomb_explosion_map(game_state: dict, x: int, y: int) -> np.ndarray:
+    explosion_map = np.zeros_like(game_state['field'])
+    for direction in DIRECTIONS:
+        for i in range(1, 4):
+            x2, y2 = x + direction[0] * i, y + direction[1] * i
+            if in_field(x2, y2, game_state) and game_state['field'][x2, y2] != -1:
+                explosion_map[x2, y2] = 1.0
+            else:
+                break
+
+    return explosion_map
+
+
 def in_bounds(array: np.ndarray, *indices: int) -> bool:
     """
     Check if the indices are within the bounds of a numpy array.

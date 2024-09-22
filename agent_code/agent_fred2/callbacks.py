@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir,
                       find_traps, best_explosion_score, explosion_score, passable, all_direction_distances,
-                      guaranteed_passable_tiles, DIRECTIONS
+                      guaranteed_passable_tiles, DIRECTIONS, bomb_explosion_map
                       )
 from .model import QNet
 
@@ -61,7 +61,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(22, 1024, 2048, 6)
+        self.model = QNet(23, 1024, 2048, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -147,6 +147,16 @@ def state_to_features(self, game_state: dict) -> np.array:
     # Arena 17 x 17 = 289
     field = game_state['field']
 
+    explosions = game_state['explosion_map']
+    cols = range(1, field.shape[0] - 1)
+    rows = range(1, field.shape[0] - 1)
+    guaranteed_passable = guaranteed_passable_tiles(game_state)
+    passable_field = guaranteed_passable >= 0
+    empty_tiles = [(x, y) for x in cols for y in rows if (field[x, y] == 0)]
+    bomb_map = build_bomb_map(game_state)
+    safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
+                  explosions[tile[0], tile[1]] == 0]
+
     # First step
     first_step = 0.0
     if game_state['step'] == 1:
@@ -164,7 +174,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     features.append(self_y_normalized)
 
     # In danger
-    bomb_map = build_bomb_map(game_state)
     if bomb_map[self_x, self_y] == 100:
         in_danger = 0.0
     else:
@@ -172,17 +181,16 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     features.append(in_danger)
 
+    # Do not place suicidal bombs
+    bomb_explosion = bomb_explosion_map(game_state, self_x, self_y)
+    if np.all(bomb_explosion == 1.0 or guaranteed_passable < 0):
+        suicidal_bomb = 1.0
+    else:
+        suicidal_bomb = 0.0
+
+    features.append(suicidal_bomb)
 
     # Distance to safety
-    explosions = game_state['explosion_map']
-    cols = range(1, field.shape[0] - 1)
-    rows = range(1, field.shape[0] - 1)
-    guaranteed_passable = guaranteed_passable_tiles(game_state)
-    passable_field = guaranteed_passable >= 0
-    empty_tiles = [(x, y) for x in cols for y in rows if (field[x, y] == 0)]
-    safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
-                  explosions[tile[0], tile[1]] == 0]
-
     safety_distances = all_direction_distances(passable_field, (self_x, self_y), safe_tiles)
     if all(d == -1 for d in safety_distances):
         # In case there is no guaranteed safe tile, we can still try to reach one.
@@ -199,7 +207,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     # +4 features
     features.extend(safety_distances)
 
-
     # Avoid repetetive movement
     tile_freq = [0.0] * 4
     for i, direction in enumerate(DIRECTIONS):
@@ -212,7 +219,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     # +5 features
     features.extend(tile_freq)
     features.append(tile_freq_stay)
-
 
     # Distance to coins
     coins = game_state['coins']
@@ -229,7 +235,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     # +4 features
     features.extend(coin_distances)
 
-
     # Avoid dangerous tiles
     is_dangerous = [0.0] * 4
     for i, direction in enumerate(DIRECTIONS):
@@ -241,11 +246,9 @@ def state_to_features(self, game_state: dict) -> np.array:
     features.extend(is_dangerous)
     features.append(is_dangerous_stay)
 
-
     # TODO place good bombs
 
     return features
-
 
     # Shortest ways
     # Initialize with zero:
@@ -374,6 +377,7 @@ def state_to_features(self, game_state: dict) -> np.array:
                       f"Proposed way trap: {self.shortest_way_trap}")
 
     return features
+
 
 def state_to_features2(self, game_state: dict) -> np.array:
     """
