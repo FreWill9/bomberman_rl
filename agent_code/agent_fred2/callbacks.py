@@ -28,7 +28,7 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 # down: +y
 # left: -x
 
-EPS_START = 0.9
+EPS_START = 0.5
 EPS_END = 0.05
 EPS_DECAY = 50
 
@@ -61,7 +61,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(23, 1024, 2048, 6)
+        self.model = QNet(22, 1024, 2048, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -82,6 +82,10 @@ def act(self, game_state: dict) -> str:
     """
     self.bomb_cooldown = max(0, self.bomb_cooldown - 1)
     self.features = state_to_features(self, game_state)
+    self.logger.debug(self.features)
+    self.logger.debug(game_state['explosion_map'].T)
+    self.logger.debug(game_state['bombs'])
+
     self.step = game_state['step']
     self.x, self.y = game_state['self'][3]
 
@@ -157,6 +161,8 @@ def state_to_features(self, game_state: dict) -> np.array:
     safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
                   explosions[tile[0], tile[1]] == 0]
 
+    self.logger.debug(guaranteed_passable.T)
+
     # First step
     first_step = 0.0
     if game_state['step'] == 1:
@@ -188,21 +194,24 @@ def state_to_features(self, game_state: dict) -> np.array:
     else:
         suicidal_bomb = 0.0
 
-    features.append(suicidal_bomb)
+    # features.append(suicidal_bomb)
 
     # Distance to safety
-    safety_distances = all_direction_distances(passable_field, (self_x, self_y), safe_tiles)
-    if all(d == -1 for d in safety_distances):
-        # In case there is no guaranteed safe tile, we can still try to reach one.
-        passable_field = field == 0
-        for x, y in game_state['others']:
-            passable_field[x, y] = False
-        for xy, t in game_state['bombs']:
-            x, y = xy
-            passable_field[x, y] = False
+    if in_danger == 1.0:
         safety_distances = all_direction_distances(passable_field, (self_x, self_y), safe_tiles)
-    # Normalize to -1 <= x <= 1
-    safety_distances = [1 - (d / 32) if d >= 0 else -1 for d in safety_distances]
+        if all(d == -1 for d in safety_distances):
+            # In case there is no guaranteed safe tile, we can still try to reach one.
+            passable_field = field == 0
+            for x, y in game_state['others']:
+                passable_field[x, y] = False
+            for xy, t in game_state['bombs']:
+                x, y = xy
+                passable_field[x, y] = False
+            safety_distances = all_direction_distances(passable_field, (self_x, self_y), safe_tiles)
+        # Normalize to -1 <= x <= 1
+        safety_distances = [1 - (d / 32) if d >= 0 else -1 for d in safety_distances]
+    else:
+        safety_distances = [0.0] * 4
 
     # +4 features
     features.extend(safety_distances)
@@ -236,15 +245,15 @@ def state_to_features(self, game_state: dict) -> np.array:
     features.extend(coin_distances)
 
     # Avoid dangerous tiles
-    is_dangerous = [0.0] * 4
+    is_safe = [0.0] * 4
     for i, direction in enumerate(DIRECTIONS):
         x2, y2 = self_x + direction[0], self_y + direction[1]
-        is_dangerous[i] = float(guaranteed_passable[x2, y2] == -2)
-    is_dangerous_stay = float(guaranteed_passable[self_x, self_y] == -2)
+        is_safe[i] = float(guaranteed_passable[x2, y2] == 1)
+    is_safe_stay = bomb_map[self_x, self_y] > 1
 
     # +5 features
-    features.extend(is_dangerous)
-    features.append(is_dangerous_stay)
+    features.extend(is_safe)
+    features.append(is_safe_stay)
 
     # TODO place good bombs
 

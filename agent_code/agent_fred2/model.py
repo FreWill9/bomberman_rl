@@ -74,10 +74,9 @@ class DQN:
 
 
 class DQN2:
-    def __init__(self, model: QNet, lr, gamma, learning_rate, batch_size, max_memory, device):
+    def __init__(self, model: QNet, lr, gamma, batch_size, max_memory, device):
         self.lr = lr
         self.gamma = gamma
-        self.learning_rate = learning_rate
         self.model = model
         self.target_model = model.clone().to(device)
         self.batch_size = batch_size
@@ -94,7 +93,7 @@ class DQN2:
         if len(self.memory) < self.batch_size:
             return
 
-        if self.step % 16 == 0:
+        if self.step % 32 == 0:
             self._update()
 
         if self.step % 400 == 0:
