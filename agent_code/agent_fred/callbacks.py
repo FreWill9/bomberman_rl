@@ -32,7 +32,7 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 50
 
-FORCE_BOMBS = False
+FORCE_BOMBS = True
 
 
 def setup(self):
@@ -61,7 +61,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(17, 1024, 2048, 6)
+        self.model = QNet(22, 1024, 2048, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -177,7 +177,8 @@ def state_to_features(self, game_state: dict) -> np.array:
     explosions = game_state['explosion_map']
     cols = range(1, field.shape[0] - 1)
     rows = range(1, field.shape[0] - 1)
-    passable_field = guaranteed_passable_tiles(game_state)
+    guaranteed_passable = guaranteed_passable_tiles(game_state)
+    passable_field = guaranteed_passable >= 0
     empty_tiles = [(x, y) for x in cols for y in rows if (field[x, y] == 0)]
     safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
                   explosions[tile[0], tile[1]] == 0]
@@ -228,7 +229,19 @@ def state_to_features(self, game_state: dict) -> np.array:
     # +4 features
     features.extend(coin_distances)
 
-    # TODO avoid dangerous tiles
+
+    # Avoid dangerous tiles
+    is_dangerous = [0.0] * 4
+    for i, direction in enumerate(DIRECTIONS):
+        x2, y2 = self_x + direction[0], self_y + direction[1]
+        is_dangerous[i] = float(guaranteed_passable[x2, y2] == -2)
+    is_dangerous_stay = float(guaranteed_passable[self_x, self_y] == -2)
+
+    # +5 features
+    features.extend(is_dangerous)
+    features.append(is_dangerous_stay)
+
+
     # TODO place good bombs
 
     return features

@@ -19,7 +19,9 @@ def in_bounds(array: np.ndarray, *indices: int) -> bool:
             return False
     return True
 
-def all_direction_distances(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)], max_step=32) -> list[int]:
+
+def all_direction_distances(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)], max_step=32) -> \
+        list[int]:
     """
     Find the distance to the closest target in all directions from the start position using BFS.
     Returns a list of distances in the order [UP, RIGHT, DOWN, LEFT]. If no target is reachable in a direction,
@@ -64,7 +66,7 @@ def all_direction_distances(passable_spots: np.ndarray, start: (int, int), targe
 
 
 def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(
-int, int)] | None:
+        int, int)] | None:
     """
     Find the closest reachable target from the start position using BFS.
 
@@ -119,7 +121,6 @@ def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
 
     bombs = copy.deepcopy(game_state['bombs'])
     explosions = copy.deepcopy(game_state['explosion_map'])
-
 
     for player in game_state['others']:
         tile_queue.append((player[3][0], player[3][1], False, 0))
@@ -190,7 +191,6 @@ def is_straight_dead_end(passable_spots: np.ndarray, x: int, y: int) -> bool:
     visited = np.zeros(passable_spots.shape)
 
     directions_set = set()
-
 
     while len(tile_queue) > 0:
         x, y = tile_queue.popleft()
@@ -439,44 +439,53 @@ def mirror_action(action: str) -> (str, str, str):
             return action, action, action
 
 
-def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
-    (in_danger, bomb_avail, up, right, down, left, touching_crate, first_step, bomb_for_trap,
-     shortest_way_coin_up, shortest_way_coin_right,
-     shortest_way_coin_down, shortest_way_coin_left,
-     shortest_way_safety_up, shortest_way_safety_right,
-     shortest_way_safety_down, shortest_way_safety_left,
-     shortest_way_trap_up, shortest_way_trap_right,
-     shortest_way_trap_down, shortest_way_trap_left,
-     explosion_score_up, explosion_score_right,
-     explosion_score_down, explosion_score_left, explosion_score_stay) = tuple(feature_vector)
+def mirror_directional_feature(feature: list[float]) -> (list[float], list[float], list[float]):
+    up, right, down, left = tuple(feature)
+    return (up, left, down, right), (down, right, up, left), (down, left, up, right)
 
-    x = np.array([in_danger, bomb_avail, up, left, down, right, touching_crate, first_step, bomb_for_trap,
-                  shortest_way_coin_up, shortest_way_coin_left,
-                  shortest_way_coin_down, shortest_way_coin_right,
-                  shortest_way_safety_up, shortest_way_safety_left,
-                  shortest_way_safety_down, shortest_way_safety_right,
-                  shortest_way_trap_up, shortest_way_trap_left,
-                  shortest_way_trap_down, shortest_way_trap_right,
-                  explosion_score_up, explosion_score_left,
-                  explosion_score_down, explosion_score_right, explosion_score_stay])
-    y = np.array([in_danger, bomb_avail, down, right, up, left, touching_crate, first_step, bomb_for_trap,
-                  shortest_way_coin_down, shortest_way_coin_right,
-                  shortest_way_coin_up, shortest_way_coin_left,
-                  shortest_way_safety_down, shortest_way_safety_right,
-                  shortest_way_safety_up, shortest_way_safety_left,
-                  shortest_way_trap_down, shortest_way_trap_right,
-                  shortest_way_trap_up, shortest_way_trap_left,
-                  explosion_score_down, explosion_score_right,
-                  explosion_score_up, explosion_score_left, explosion_score_stay])
-    xy = np.array([in_danger, bomb_avail, down, left, up, right, touching_crate, first_step, bomb_for_trap,
-                   shortest_way_coin_down, shortest_way_coin_left,
-                   shortest_way_coin_up, shortest_way_coin_right,
-                   shortest_way_safety_down, shortest_way_safety_left,
-                   shortest_way_safety_up, shortest_way_safety_right,
-                   shortest_way_trap_down, shortest_way_trap_left,
-                   shortest_way_trap_up, shortest_way_trap_right,
-                   explosion_score_down, explosion_score_left,
-                   explosion_score_up, explosion_score_right, explosion_score_stay])
+
+def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
+    (bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+     safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left,
+     tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
+     tile_freq_stay,
+     coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left,
+     is_dangerous_up, is_dangerous_right, is_dangerous_down, is_dangerous_left,
+     is_dangerous_stay) = tuple(feature_vector)
+
+    safety_distances = [safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left]
+    tile_freq = [tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left]
+    coin_distances = [coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left]
+    is_dangerous = [is_dangerous_up, is_dangerous_right, is_dangerous_down, is_dangerous_left]
+
+    safety_distances_x, safety_distances_y, safety_distances_xy = mirror_directional_feature(safety_distances)
+    tile_freq_x, tile_freq_y, tile_freq_xy = mirror_directional_feature(tile_freq)
+    coin_distances_x, coin_distances_y, coin_distances_xy = mirror_directional_feature(coin_distances)
+    is_dangerous_x, is_dangerous_y, is_dangerous_xy = mirror_directional_feature(is_dangerous)
+
+    x = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+                  *safety_distances_x,
+                  *tile_freq_x,
+                  tile_freq_stay,
+                  *coin_distances_x,
+                  *is_dangerous_x,
+                  is_dangerous_stay])
+
+    y = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+                  *safety_distances_y,
+                  *tile_freq_y,
+                  tile_freq_stay,
+                  *coin_distances_y,
+                  *is_dangerous_y,
+                  is_dangerous_stay])
+
+    xy = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+                   *safety_distances_xy,
+                   *tile_freq_xy,
+                   tile_freq_stay,
+                   *coin_distances_xy,
+                   *is_dangerous_xy,
+                   is_dangerous_stay])
 
     return x, y, xy
 
