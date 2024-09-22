@@ -19,6 +19,49 @@ def in_bounds(array: np.ndarray, *indices: int) -> bool:
             return False
     return True
 
+def all_direction_distances(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)], max_step=32) -> list[int]:
+    """
+    Find the distance to the closest target in all directions from the start position using BFS.
+    Returns a list of distances in the order [UP, RIGHT, DOWN, LEFT]. If no target is reachable in a direction,
+    the distance is set to -1.
+    """
+    if len(targets) == 0:
+        return [-1] * 4
+
+    targets = set(targets)
+
+    # Use BFS to find the closest reachable coin.
+    distances = [-1] * 4
+    tile_queue = deque([(start[0], start[1], 0, -1)])
+    visited = np.zeros(passable_spots.shape + (4,))
+    visited[start[0], start[1], :] = 1
+    while len(tile_queue) > 0:
+        x, y, step, search_dir = tile_queue.popleft()
+
+        if (x, y) in targets:
+            if step == 0:
+                distances = [0] * 4
+                break
+            distances[search_dir] = step
+            continue
+
+        if step >= max_step:
+            continue
+
+        for i, direction in enumerate(DIRECTIONS):
+            if step == 0:
+                search_dir = i
+
+            if distances[i] != -1:
+                continue
+
+            x2, y2 = x + direction[0], y + direction[1]
+            if in_bounds(passable_spots, x2, y2) and passable_spots[x2, y2] and visited[x2, y2, search_dir] == 0:
+                tile_queue.append((x2, y2, step + 1, search_dir))
+                visited[x2, y2, search_dir] = 1
+
+    return distances
+
 
 def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(
 int, int)] | None:
@@ -67,12 +110,16 @@ int, int)] | None:
     return path
 
 
-def guaranteed_passable_tiles(game_state: dict) -> np.ndarray:
+def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
     """
     Find all tiles that are guaranteed to be reachable and the number of steps to reach them.
     """
     passable_tiles = np.full(game_state['field'].shape, -2)
     tile_queue = deque()
+
+    bombs = copy.deepcopy(game_state['bombs'])
+    explosions = copy.deepcopy(game_state['explosion_map'])
+
 
     for player in game_state['others']:
         tile_queue.append((player[3][0], player[3][1], False, 0))
@@ -83,12 +130,37 @@ def guaranteed_passable_tiles(game_state: dict) -> np.ndarray:
     passable_tiles[self_x, self_y] = 0
 
     # Simulate steps of all agents until all reachable tiles are explored.
+    prev_step = -1
     while len(tile_queue) > 0:
         x, y, is_self, step = tile_queue.popleft()
 
+        if step >= max_step:
+            continue
+
+        if step != prev_step:
+            # Update bombs and explosions
+            prev_step = step
+            exploded = [xy for xy, t in bombs if t <= 1]
+            bombs = [(xy, t - 1) for xy, t in bombs if t > 1]
+            explosions = np.maximum(0, explosions - 1)
+            for x, y in exploded:
+                for direction in DIRECTIONS:
+                    for i in range(1, 4):
+                        x2, y2 = x + direction[0] * i, y + direction[1] * i
+                        if in_field(x2, y2, game_state) and game_state['field'][x2, y2] != -1:
+                            explosions[x2, y2] = 2
+                            # TODO new ways through crates?
+                        else:
+                            break
+            prev_step = step
+
         for direction in DIRECTIONS:
             x2, y2 = x + direction[0], y + direction[1]
-            if not (passable(x2, y2, game_state) and passable_tiles[x2, y2] == -2):
+            if not (in_field(x, y, game_state)
+                    and game_state['field'][x, y] == 0
+                    and (x, y) not in [xy for xy, t in bombs]
+                    and explosions[x, y] == 0
+                    and passable_tiles[x2, y2] == -2):
                 continue
             tile_queue.append((x2, y2, is_self, step + 1))
             if is_self:
