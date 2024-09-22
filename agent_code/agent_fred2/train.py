@@ -48,7 +48,7 @@ def setup_training(self):
     self.epsilon = 0
     self.gamma = 0.95
     self.memory = deque(maxlen=MAX_MEMORY)
-    self.trainer = DQN2(self.model, lr=LR, gamma=self.gamma, learning_rate=0.7, batch_size=BATCH_SIZE,
+    self.trainer = DQN2(self.model, lr=LR, gamma=self.gamma, batch_size=BATCH_SIZE,
                         max_memory=MAX_MEMORY, device=device)
 
 
@@ -157,7 +157,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     act_enc_t = tuple([encode_action(act) for act in act_t])
 
     self.trainer.train(state_old_features, action_enc, reward, state_new_features, False)
-    for i in range(7):
+    for i in range(len(act_t)):
         self.trainer.train(old_features_t[i], act_enc_t[i], reward, new_features_t[i], False)
 
 
@@ -214,15 +214,9 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     last_action_enc = encode_action(last_action)
     act_enc_t = tuple([encode_action(act) for act in act_t])
 
-    # remember
-    # self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
-    # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
-    # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
-    # self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
-
-    # train short term memory
+    # train the model
     self.trainer.train(last_state_features, last_action_enc, reward, last_state_features, True)
-    for i in range(7):
+    for i in range(len(act_t)):
         self.trainer.train(last_features_t[i], act_enc_t[i], reward, last_features_t[i], True)
 
     # Store the model

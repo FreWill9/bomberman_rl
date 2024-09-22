@@ -11,6 +11,7 @@ DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 
 def bomb_explosion_map(game_state: dict, x: int, y: int) -> np.ndarray:
     explosion_map = np.zeros_like(game_state['field'])
+    explosion_map[x, y] = 1.0
     for direction in DIRECTIONS:
         for i in range(1, 4):
             x2, y2 = x + direction[0] * i, y + direction[1] * i
@@ -134,7 +135,12 @@ def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
     tile_queue = deque()
 
     bombs = copy.deepcopy(game_state['bombs'])
+    exploded = [xy for xy, t in bombs if t < 1]
+    bombs = [(xy, t) for xy, t in bombs if t >= 1]
     explosions = copy.deepcopy(game_state['explosion_map'])
+    for x2, y2 in exploded:
+        explosion = bomb_explosion_map(game_state, x2, y2) * 2
+        explosions = np.maximum(explosions, explosion)
 
     for player in game_state['others']:
         tile_queue.append((player[3][0], player[3][1], False, 0))
@@ -153,28 +159,21 @@ def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
             continue
 
         if step != prev_step:
-            # Update bombs and explosions
-            prev_step = step
+            # Update bombs and explosions (bombs explode at 0 already)
             exploded = [xy for xy, t in bombs if t <= 1]
             bombs = [(xy, t - 1) for xy, t in bombs if t > 1]
             explosions = np.maximum(0, explosions - 1)
-            for x, y in exploded:
-                for direction in DIRECTIONS:
-                    for i in range(1, 4):
-                        x2, y2 = x + direction[0] * i, y + direction[1] * i
-                        if in_field(x2, y2, game_state) and game_state['field'][x2, y2] != -1:
-                            explosions[x2, y2] = 2
-                            # TODO new ways through crates?
-                        else:
-                            break
+            for x2, y2 in exploded:
+                explosion = bomb_explosion_map(game_state, x2, y2) * 2
+                explosions = np.maximum(explosions, explosion)
             prev_step = step
 
         for direction in DIRECTIONS:
             x2, y2 = x + direction[0], y + direction[1]
-            if not (in_field(x, y, game_state)
-                    and game_state['field'][x, y] == 0
-                    and (x, y) not in [xy for xy, t in bombs]
-                    and explosions[x, y] == 0
+            if not (in_field(x2, y2, game_state)
+                    and game_state['field'][x2, y2] == 0
+                    and (x2, y2) not in [(int(xy[0]), int(xy[1])) for xy, t in bombs]
+                    and explosions[x2, y2] == 0
                     and passable_tiles[x2, y2] == -2):
                 continue
             tile_queue.append((x2, y2, is_self, step + 1))
@@ -461,8 +460,8 @@ def transform_action(action: str):
     if action not in dirs:
         return (action, ) * 7
     action_indx = dirs.index(action)
-    dirst_t = transform_directional_feature(dirs)
-    return list(zip(*dirst_t))[action_indx]
+    dirs_t = transform_directional_feature(dirs)
+    return list(zip(*dirs_t))[action_indx]
 
 
 def transform_directional_feature(feature: list):
@@ -483,7 +482,7 @@ def transform_feature_vector(feature_vector: np.ndarray):
     Returns a tuple of the features mirrored by x and y axes and rotated by 90, 180 and 270 degrees clockwise and
      mirrored diagonally in both directions.
     """
-    (bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
+    (bomb_avail, self_x_normalized, self_y_normalized, in_danger,# suicidal_bomb,
      safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left,
      tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
      tile_freq_stay,
@@ -502,8 +501,8 @@ def transform_feature_vector(feature_vector: np.ndarray):
     is_dangerous_t = transform_directional_feature(is_dangerous)
 
     transformations = []
-    for i in range(7):
-        transformations.append(np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
+    for i in range(len(safety_distances_t)):
+        transformations.append(np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,# suicidal_bomb,
                                          *safety_distances_t[i],
                                          *tile_freq_t[i],
                                          tile_freq_stay,
@@ -515,9 +514,18 @@ def transform_feature_vector(feature_vector: np.ndarray):
 
 
 def passable(x, y, game_state):
+    explosions = copy.deepcopy(game_state['explosion_map'])
+    exploded = [xy for xy, t in game_state['bombs'] if t < 1]
+
+    for x2, y2 in exploded:
+        explosion = bomb_explosion_map(game_state, x2, y2) * 2
+        explosions = np.maximum(explosions, explosion)
+
     return (in_field(x, y, game_state) and game_state['field'][x, y] == 0
-            and (x, y) not in [xy for xy, t in game_state['bombs']]
-            and (x, y) not in [xy for (n, s, b, xy) in game_state['others']])
+            and (x, y) not in [(int(x2), int(y2)) for (x2, y2), t in game_state['bombs']]
+            and (x, y) not in [xy for (n, s, b, xy) in game_state['others']]
+            and explosions[x, y] == 0
+            )
 
 
 def closest_target_dist(game_state: dict, coord: (int, int), targets: list[(int, int)] = None) -> int:
