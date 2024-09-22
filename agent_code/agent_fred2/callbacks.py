@@ -183,7 +183,7 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # Do not place suicidal bombs
     bomb_explosion = bomb_explosion_map(game_state, self_x, self_y)
-    if np.all(bomb_explosion == 1.0 or guaranteed_passable < 0):
+    if np.all(np.logical_or(bomb_explosion == 1.0, guaranteed_passable < 0)):
         suicidal_bomb = 1.0
     else:
         suicidal_bomb = 0.0

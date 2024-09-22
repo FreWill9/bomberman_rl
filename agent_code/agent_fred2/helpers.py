@@ -458,7 +458,7 @@ def mirror_directional_feature(feature: list[float]) -> (list[float], list[float
 
 
 def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray):
-    (bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+    (bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
      safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left,
      tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
      tile_freq_stay,
@@ -476,7 +476,7 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
     coin_distances_x, coin_distances_y, coin_distances_xy = mirror_directional_feature(coin_distances)
     is_dangerous_x, is_dangerous_y, is_dangerous_xy = mirror_directional_feature(is_dangerous)
 
-    x = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+    x = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
                   *safety_distances_x,
                   *tile_freq_x,
                   tile_freq_stay,
@@ -484,7 +484,7 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
                   *is_dangerous_x,
                   is_dangerous_stay])
 
-    y = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+    y = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
                   *safety_distances_y,
                   *tile_freq_y,
                   tile_freq_stay,
@@ -492,7 +492,7 @@ def mirror_feature_vector(feature_vector: np.ndarray) -> (np.ndarray, np.ndarray
                   *is_dangerous_y,
                   is_dangerous_stay])
 
-    xy = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,
+    xy = np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
                    *safety_distances_xy,
                    *tile_freq_xy,
                    tile_freq_stay,
