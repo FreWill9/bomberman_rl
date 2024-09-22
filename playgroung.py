@@ -1,8 +1,9 @@
 import numpy as np
+import copy
 from collections import namedtuple, deque
 from agent_code.agent_fred.helpers import (build_bomb_map, tile_value, look_for_targets,
                                            coord_to_dir, find_traps, explosion_score,
-                                           closest_target_dist, best_explosion_score)
+                                           closest_target_dist, best_explosion_score, safe_tile_reachable)
 
 experiment_state = {'round': 1,
 
@@ -10,9 +11,9 @@ experiment_state = {'round': 1,
 
                     'field': np.array(
                         [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
-                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
-                         [-1, 0, -1, 0, 0, -1, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
-                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0, -1],
+                         [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
+                         [-1, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0, -1],
                          [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
@@ -27,13 +28,13 @@ experiment_state = {'round': 1,
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
 
-                    'self': ('test', 2, True, (np.int64(9), np.int64(1))),
+                    'self': ('test', 2, False, (np.int64(1), np.int64(7))),
 
-                    'others': [("ooo", 2, True, (np.int64(7), np.int64(1))),
+                    'others': [("ooo", 2, True, (np.int64(3), np.int64(7))),
                                # ("oo", 2, True, (np.int64(15), np.int64(14))),
                                ],
 
-                    'bombs': [],
+                    'bombs': [((1, 7), 5)],
 
                     'coins': [(2, 1)],
 
@@ -227,7 +228,7 @@ def state_to_features(self, game_state: dict) -> np.array:
     escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and tile not in bomb_xys]
 
     safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
-                  explosions[tile[0], tile[1]] == 0 and (tile[0], tile[1]) not in trap_tiles]
+                  explosions[tile[0], tile[1]] == 0]
 
     # Exclude ways that are occupied by walls, crates, danger, explosions and others
     free_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
@@ -244,7 +245,6 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     for t in trap_tiles:
         free_space[t] = False
-        escape_space[t] = False
 
     # Compute shortest way coordinates
     dir_coin = look_for_targets(free_space, (self_x, self_y), free_coins)
@@ -263,11 +263,13 @@ def state_to_features(self, game_state: dict) -> np.array:
     explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
                         explosion_score_stay]
 
-    best_explosion = np.argmax(explosion_scores)
-    if explosion_scores[best_explosion] == 0:
+    best_explosion = np.argmax(explosion_scores[:4])
+    pot_game_state = copy.deepcopy(game_state)
+    pot_game_state['bombs'].append(((self_x, self_y), 5))
+    if explosion_scores[best_explosion] == 0 or not safe_tile_reachable(pot_game_state, (self_x, self_y)):
         best_explosion = -1
         self.shortest_way_crate = "None"
-    elif explosion_scores[4] >= explosion_scores[best_explosion]:
+    elif explosion_scores[4] >= explosion_scores[best_explosion] and game_state['self'][2]:
         best_explosion = 4
         self.shortest_way_crate = "BOMB"
     else:
