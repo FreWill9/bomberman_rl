@@ -627,15 +627,15 @@ def find_traps(game_state: dict) -> tuple[list, list]:
     trap_tiles = set([])
     bomb_for_trap_tiles = set([])
 
-    if closest_opp_dist(game_state, self_coord, others) < 5:
+    if closest_opp_dist(game_state, self_coord, others) < 3:
         for x, y in empty_tiles:
-            if closest_target_dist(game_state, self_coord, [(x, y)]) < 5:
+            if closest_target_dist(game_state, self_coord, [(x, y)]) < 3:
                 pot_game_state = copy.deepcopy(game_state)
                 pot_game_state['bombs'].append(((x, y), 5))
                 pot_bomb_map = build_bomb_map(pot_game_state)
 
                 for i, j in empty_tiles:
-                    if closest_target_dist(game_state, self_coord, [(i, j)]) < 5:
+                    if closest_target_dist(game_state, self_coord, [(i, j)]) < 3:
                         if pot_bomb_map[i, j] < 100 and not safe_tile_reachable(pot_game_state, (i, j)):
                             trap_tiles.add((i, j))
                             if (i, j) in others:

@@ -137,12 +137,6 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     elif self.shortest_way_crate == 'BOMB' and self_action != 'BOMB':
         events.append(MISSED_BOMB)
 
-    # Reward for trapping opp
-    if self.bomb_for_trap == 1 and self_action == 'BOMB':
-        events.append(TRAP)
-    elif self.bomb_for_trap == 1 and self_action != 'BOMB':
-        events.append(MISSED_TRAP)
-
     reward = reward_from_events(self, events)
 
     # augment the dataset
@@ -304,42 +298,42 @@ def reward_from_events(self, events: List[str]) -> int:
         GOOD_BOMB: +1,
         BAD_BOMB: -2,
         MISSED_BOMB: -2,
-        LOOP: -2,
+        LOOP: -1,
         NO_LOOP: +0,
         SHORTEST_WAY_COIN: +2,
         NOT_SHORTEST_WAY_COIN: -2,
         SHORTEST_WAY_CRATE: +1,
         NOT_SHORTEST_WAY_CRATE: -1,
-        SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -3
+        SHORTEST_WAY_SAFETY: +2,
+        NOT_SHORTEST_WAY_SAFETY: -4
     }
 
     # Stage 3
     game_rewards_stage_3 = {
         e.COIN_COLLECTED: +1,
-        e.KILLED_SELF: -1,
-        e.GOT_KILLED: -1,
-        e.KILLED_OPPONENT: +3,
+        e.KILLED_SELF: -3,
+        e.GOT_KILLED: -5,
+        e.KILLED_OPPONENT: +5,
         e.OPPONENT_ELIMINATED: +2,
         e.INVALID_ACTION: -1,
         e.SURVIVED_ROUND: +1,
         e.CRATE_DESTROYED: +1,
-        e.COIN_FOUND: +1,
+        e.COIN_FOUND: +0,
         GOOD_BOMB: +1,
-        BAD_BOMB: -1,
-        TRAP: +10,
-        MISSED_TRAP: -10,
-        SHORTEST_WAY_COIN: +1,
-        NOT_SHORTEST_WAY_COIN: 0,
-        SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1,
-        SHORTEST_WAY_TRAP: +2,
-        NOT_SHORTEST_WAY_TRAP: -1,
+        BAD_BOMB: -2,
+        MISSED_BOMB: -2,
+        LOOP: -0.5,
+        SHORTEST_WAY_COIN: +2,
+        NOT_SHORTEST_WAY_COIN: -2,
+        SHORTEST_WAY_CRATE: +1,
+        NOT_SHORTEST_WAY_CRATE: -1,
+        SHORTEST_WAY_SAFETY: +1.5,
+        NOT_SHORTEST_WAY_SAFETY: -4
     }
 
     reward_sum = 0
     for event in events:
-        if event in game_rewards_stage_2:
-            reward_sum += game_rewards_stage_2[event]
+        if event in game_rewards_stage_3:
+            reward_sum += game_rewards_stage_3[event]
     self.logger.info(f"Awarded {reward_sum} for events {', '.join(events)}")
     return reward_sum
