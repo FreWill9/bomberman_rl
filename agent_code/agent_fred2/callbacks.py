@@ -14,7 +14,7 @@ from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir
                       find_traps, best_explosion_score, explosion_score, passable, all_direction_distances,
                       guaranteed_passable_tiles, DIRECTIONS
                       )
-from .model import QNet, QNet2
+from .model import QNet
 
 # if GPU is to be used
 device = torch.device(
