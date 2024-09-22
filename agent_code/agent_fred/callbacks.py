@@ -32,7 +32,7 @@ EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 50
 
-FORCE_BOMBS = False
+FORCE_BOMBS = True
 
 
 def setup(self):
