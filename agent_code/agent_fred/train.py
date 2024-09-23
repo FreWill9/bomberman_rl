@@ -311,24 +311,24 @@ def reward_from_events(self, events: List[str]) -> int:
     # Stage 3
     game_rewards_stage_3 = {
         e.COIN_COLLECTED: +1,
-        e.KILLED_SELF: -3,
+        e.KILLED_SELF: -5,
         e.GOT_KILLED: -5,
-        e.KILLED_OPPONENT: +5,
+        e.KILLED_OPPONENT: +4,
         e.OPPONENT_ELIMINATED: +2,
         e.INVALID_ACTION: -1,
         e.SURVIVED_ROUND: +1,
         e.CRATE_DESTROYED: +1,
         e.COIN_FOUND: +0,
         GOOD_BOMB: +1,
-        BAD_BOMB: -2,
-        MISSED_BOMB: -2,
+        BAD_BOMB: -1,
+        MISSED_BOMB: -1,
         LOOP: -0.5,
         SHORTEST_WAY_COIN: +2,
         NOT_SHORTEST_WAY_COIN: -2,
         SHORTEST_WAY_CRATE: +1,
         NOT_SHORTEST_WAY_CRATE: -1,
-        SHORTEST_WAY_SAFETY: +1.5,
-        NOT_SHORTEST_WAY_SAFETY: -4
+        SHORTEST_WAY_SAFETY: +2,
+        NOT_SHORTEST_WAY_SAFETY: -5
     }
 
     reward_sum = 0
