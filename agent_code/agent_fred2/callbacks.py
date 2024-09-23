@@ -83,7 +83,7 @@ def act(self, game_state: dict) -> str:
     self.bomb_cooldown = max(0, self.bomb_cooldown - 1)
     self.features = state_to_features(self, game_state)
     self.logger.debug(self.features)
-    self.logger.debug(game_state['explosion_map'].T)
+    # self.logger.debug(game_state['explosion_map'].T)
     self.logger.debug(game_state['bombs'])
 
     self.step = game_state['step']
