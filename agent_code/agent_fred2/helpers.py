@@ -106,7 +106,7 @@ def is_safe(game_state: dict, x: int, y: int) -> bool:
         if bomb_map[x, y] < step:
             continue
 
-        conns = connections(game_state['field'], x, y)
+        conns = connections(game_state['field'] == 0, x, y)
         for x2, y2 in conns:
             if visited[x2, y2] == 0:
                 tile_queue.append((x2, y2, step + 1))

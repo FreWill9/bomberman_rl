@@ -250,7 +250,7 @@ def state_to_features(self, game_state: dict) -> np.array:
     safety = [0.0] * 4
     for i, direction in enumerate(DIRECTIONS):
         x2, y2 = self_x + direction[0], self_y + direction[1]
-        if guaranteed_passable[x2, y2] == 1 and is_safe(game_state, x2, y2):
+        if int(guaranteed_passable[x2, y2]) == 1 and is_safe(game_state, x2, y2):
             safety[i] = 1.0
     is_safe_stay = float(is_safe(game_state, self_x, self_y))
 
