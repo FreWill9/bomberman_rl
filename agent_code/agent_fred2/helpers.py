@@ -182,9 +182,19 @@ def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: 
     return path
 
 
-def guaranteed_passable_tiles(game_state: dict, ignore_enemies=False, max_step=32) -> np.ndarray:
+def guaranteed_passable_tiles(game_state: dict, ignore_enemies=False, enemy_distances=False, max_step=32) -> np.ndarray:
     """
     Find all tiles that are guaranteed to be reachable and the number of steps to reach them.
+    Args:
+        game_state: the game state.
+        ignore_enemies: whether to ignore enemy movement.
+        enemy_distances: if set to True all tiles reachable by self are marked with -1 and all tiles reachable by
+            enemies are marked with the number of steps the enemies need to reach them.
+        max_step: the maximum number of steps to search.
+    Returns:
+        a 2D numpy array with the same shape as the game field, where -1 indicates a tile reachable by enemies first
+         and 0 or greater indicates the number of steps needed to reach the tile by the agent.
+         -2 indicates an unreachable tile.
     """
     passable_tiles = np.full(game_state['field'].shape, -2)
     tile_queue = deque()
@@ -195,11 +205,11 @@ def guaranteed_passable_tiles(game_state: dict, ignore_enemies=False, max_step=3
     if not ignore_enemies:
         for player in game_state['others']:
             tile_queue.append((player[3][0], player[3][1], False, 0))
-            passable_tiles[player[3][0], player[3][1]] = -1
+            passable_tiles[player[3][0], player[3][1]] = -1 if not enemy_distances else 0
 
     self_x, self_y = game_state['self'][3]
     tile_queue.append((self_x, self_y, True, 0))
-    passable_tiles[self_x, self_y] = 0
+    passable_tiles[self_x, self_y] = 0 if not enemy_distances else -1
 
     # Simulate steps of all agents until all reachable tiles are explored.
     prev_step = -1
@@ -231,7 +241,7 @@ def guaranteed_passable_tiles(game_state: dict, ignore_enemies=False, max_step=3
                 explosion = True
                 continue
             tile_queue.append((x2, y2, is_self, step + 1))
-            if is_self:
+            if is_self and not enemy_distances:
                 passable_tiles[x2, y2] = step + 1
             else:
                 passable_tiles[x2, y2] = -1
@@ -255,14 +265,29 @@ def connections(passable_spots: np.ndarray, x: int, y: int) -> list[(int, int)]:
     return free
 
 
-def is_straight_dead_end(passable_spots: np.ndarray, x: int, y: int) -> bool:
+def straight_dead_end(passable_spots: np.ndarray, x: int, y: int):
     """
     Check if a tile leads to a dead end in a straight line.
+    Returns start and end of the dead end or None if no dead end is found.
     """
     tile_queue = deque([(x, y)])
     visited = np.zeros(passable_spots.shape)
 
-    directions_set = set()
+    start = None
+    end = None
+
+    conns = connections(passable_spots, x, y)
+    directions = [(x2 - x, y2 - y) for x2, y2 in conns]
+
+    if len(directions) == 1:
+        end = (x, y)
+        directions.append((-directions[0][0], -directions[0][1]))
+    elif len(directions) > 2:
+        return None, None
+    elif not (directions[0][0] == -directions[1][0] and directions[0][1] == -directions[1][1]):
+        return None, None
+    directions_set = set(directions)
+
 
     while len(tile_queue) > 0:
         x, y = tile_queue.popleft()
@@ -270,23 +295,26 @@ def is_straight_dead_end(passable_spots: np.ndarray, x: int, y: int) -> bool:
         conns = connections(passable_spots, x, y)
         if len(conns) == 1:
             # Dead end reached
-            return True
+            end = (x, y)
+            continue
         if len(conns) > 2:
             # The path splits
+            start = (x, y)
             continue
 
         directions = [(x2 - x, y2 - y) for x2, y2 in conns]
-        if len(directions_set) == 0:
-            directions_set = set(directions)
-        elif directions_set != set(directions):
+        if directions_set != set(directions):
             # The path bends
+            start = (x, y)
             continue
 
         for x2, y2 in conns:
             if visited[x2, y2] == 0:
                 tile_queue.append((x2, y2))
 
-    return False
+    if end is None:
+        return None, None
+    return start, end
 
 
 def look_for_targets(free_space, start, targets, logger=None):
@@ -669,3 +697,19 @@ def find_traps(game_state: dict, empty_tiles, others: list[(int, int)]) -> (list
                         bomb_for_trap_tiles.add((x, y))
 
     return list(trap_tiles), list(bomb_for_trap_tiles)
+
+
+def is_trap(game_state, guaranteed_passable):
+    x, y = game_state['self'][3]
+    start, end = straight_dead_end(guaranteed_passable >= 0, x, y)
+    if start is None:
+        return False
+
+    conns = connections(guaranteed_passable >= 0, start[0], start[1])
+    start_dist = guaranteed_passable[start[0], start[1]]
+
+    enemy_distances = guaranteed_passable_tiles(game_state, ignore_enemies=False, enemy_distances=True)
+
+    for x2, y2 in conns:
+        if 0 <= enemy_distances[x2, y2] <= start_dist + 1:
+            return True

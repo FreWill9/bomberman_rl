@@ -202,7 +202,8 @@ def state_to_features(self, game_state: dict) -> np.array:
         if all(d == -1 for d in safety_distances):
             # In case there is no guaranteed safe tile, we can still try to reach one.
             passable_field = field == 0
-            for x, y in game_state['others']:
+            for other in game_state['others']:
+                x, y = other[3]
                 passable_field[x, y] = False
             for xy, t in game_state['bombs']:
                 x, y = xy
