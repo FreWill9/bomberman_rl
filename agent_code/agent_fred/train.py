@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import torch
 
 from .callbacks import state_to_features
-from .helpers import encode_action, plot, mirror_action, mirror_feature_vector
+from .helpers import (encode_action, plot, mirror_action, mirror_feature_vector,
+                      transform_feature_vector, transform_action)
 from .custom_events import *
 from .model import QNet, DQN, DQN2
 
@@ -78,7 +79,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(NOT_WAITED)
 
     # If agent has been in the same location three times recently, it's a loop
-    if self.coordinate_history.count((new_game_state['self'][3][0], new_game_state['self'][3][1])) >= 3:
+    if self.coordinate_history.count((new_game_state['self'][3][0], new_game_state['self'][3][1])) >= 2:
         events.append(LOOP)
     else:
         events.append(NO_LOOP)
@@ -143,38 +144,19 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     # state to features is non-deterministic, calling multiple times can cause problems
     state_old_features = self.features
     state_new_features = state_to_features(self, new_game_state)
-    # mirror feature vectors and actions on x, y and both axes:
-    x_old_features, y_old_features, xy_old_features = mirror_feature_vector(state_old_features)
-    x_new_features, y_new_features, xy_new_features = mirror_feature_vector(state_new_features)
-    x_act, y_act, xy_act = mirror_action(self_action)
+
+    old_features_t = transform_feature_vector(state_old_features)
+    new_features_t = transform_feature_vector(state_new_features)
+    act_t = transform_action(self_action)
 
     # encode_action
     action_enc = encode_action(self_action)
-    x_act_enc = encode_action(x_act)
-    y_act_enc = encode_action(y_act)
-    xy_act_enc = encode_action(xy_act)
 
-    # remember
-    # self.memory.append(Memory(state_old_features, action_enc, reward, state_new_features, False))
-    # self.memory.append(Memory(x_old_features, x_act_enc, reward, x_new_features, False))
-    # self.memory.append(Memory(y_old_features, y_act_enc, reward, y_new_features, False))
-    # self.memory.append(Memory(xy_old_features, xy_act_enc, reward, xy_new_features, False))
+    act_enc_t = tuple([encode_action(act) for act in act_t])
 
-    # train short term memory
     self.trainer.train(state_old_features, action_enc, reward, state_new_features, False)
-    self.trainer.train(x_old_features, x_act_enc, reward, x_new_features, False)
-    self.trainer.train(y_old_features, y_act_enc, reward, y_new_features, False)
-    self.trainer.train(xy_old_features, xy_act_enc, reward, xy_new_features, False)
-
-    # if self.step % 4 == 0:
-    #     # train long term memory
-    #     if len(self.memory) > BATCH_SIZE:
-    #         mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
-    #     else:
-    #         mini_sample = self.memory
-    #
-    #     states, actions, rewards, next_states, dones = zip(*mini_sample)
-    #     self.trainer.train(states, actions, rewards, next_states, dones)
+    for i in range(len(act_t)):
+        self.trainer.train(old_features_t[i], act_enc_t[i], reward, new_features_t[i], False)
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
     """
@@ -216,26 +198,17 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     # state to features not needed
     last_state_features = self.features
     # mirror game-states and actions on x, y and both axes:
-    x_last_features, y_last_features, xy_last_features = mirror_feature_vector(last_state_features)
-    x_act, y_act, xy_act = mirror_action(last_action)
+    last_features_t = transform_feature_vector(last_state_features)
+    act_t = transform_action(last_action)
 
     # encode actions
     last_action_enc = encode_action(last_action)
-    x_act_enc = encode_action(x_act)
-    y_act_enc = encode_action(y_act)
-    xy_act_enc = encode_action(xy_act)
+    act_enc_t = tuple([encode_action(act) for act in act_t])
 
-    # remember
-    # self.memory.append(Memory(last_state_features, last_action_enc, reward, last_state_features, True))
-    # self.memory.append(Memory(x_last_features, x_act_enc, reward, x_last_features, True))
-    # self.memory.append(Memory(y_last_features, y_act_enc, reward, y_last_features, True))
-    # self.memory.append(Memory(xy_last_features, xy_act_enc, reward, xy_last_features, True))
-
-    # train short term memory
+    # train the model
     self.trainer.train(last_state_features, last_action_enc, reward, last_state_features, True)
-    self.trainer.train(x_last_features, x_act_enc, reward, x_last_features, True)
-    self.trainer.train(y_last_features, y_act_enc, reward, y_last_features, True)
-    self.trainer.train(xy_last_features, xy_act_enc, reward, xy_last_features, True)
+    for i in range(len(act_t)):
+        self.trainer.train(last_features_t[i], act_enc_t[i], reward, last_features_t[i], True)
 
     # Store the model
     with open("my-saved-model.pt", "wb") as file:
@@ -260,18 +233,19 @@ def reward_from_events(self, events: List[str]) -> int:
     # Stage 1
     game_rewards_stage_1 = {
         e.COIN_COLLECTED: +1,
-        e.KILLED_SELF: -1,
+        e.KILLED_SELF: -2,
         e.INVALID_ACTION: -1,
         e.WAITED: -1,
-        e.BOMB_DROPPED: -1,
-        SHORTEST_WAY_COIN: +1,
-        NOT_SHORTEST_WAY_COIN: -1,
+        e.BOMB_DROPPED: 0,
+        SHORTEST_WAY_COIN: +2,
+        NOT_SHORTEST_WAY_COIN: -3,
         SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1
+        NOT_SHORTEST_WAY_SAFETY: -3,
+        LOOP: -1
     }
 
     # Stage 1.5
-    # Remember to activate forced bomb drop in act()!
+    # Remember to activate force bomb drop!
     game_rewards_stage_1_5 = {
         e.COIN_COLLECTED: +1,
         e.KILLED_SELF: -1,
@@ -333,7 +307,7 @@ def reward_from_events(self, events: List[str]) -> int:
 
     reward_sum = 0
     for event in events:
-        if event in game_rewards_stage_3:
-            reward_sum += game_rewards_stage_3[event]
+        if event in game_rewards_stage_1:
+            reward_sum += game_rewards_stage_1[event]
     self.logger.info(f"Awarded {reward_sum} for events {', '.join(events)}")
     return reward_sum

@@ -26,9 +26,9 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 120
+EPS_DECAY = 25
 
-FORCE_BOMBS = False
+FORCE_BOMBS = True
 
 
 def setup(self):
@@ -58,7 +58,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(26, 1024, 1024, 6)
+        self.model = QNet(20, 1024, 1024, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -159,13 +159,13 @@ def state_to_features(self, game_state: dict) -> np.array:
         bomb_opp1 = int(game_state['others'][0][2])
         x_opp1 = game_state['others'][0][3][0] / 15
         y_opp1 = game_state['others'][0][3][1] / 15
-        alone = 0
+        alone = False
     except IndexError:
         score_opp1 = 0
         bomb_opp1 = 0
         x_opp1 = -1  # 0 or -1
         y_opp1 = -1
-        alone = 1
+        alone = True
     try:
         score_opp2 = game_state['others'][1][1] / 100
         bomb_opp2 = int(game_state['others'][1][2])
@@ -313,7 +313,7 @@ def state_to_features(self, game_state: dict) -> np.array:
     explosion_scores = [float(i == best_explosion) for i in range(5)]
 
     # Assign shortest way coordinates to features
-    if closest_target_dist(game_state, (self_x, self_y)) < 15:
+    if closest_target_dist(game_state, (self_x, self_y)) < 15 or alone:
         self.shortest_way_coin, shortest_way_coin_up, shortest_way_coin_right, \
             shortest_way_coin_down, shortest_way_coin_left = coord_to_dir(self_x, self_y, dir_coin)
 
@@ -321,6 +321,9 @@ def state_to_features(self, game_state: dict) -> np.array:
         crate_dirs = coord_to_dir(self_x, self_y, dir_crate)
         self.shortest_way_crate = crate_dirs[0]
         explosion_scores = list(crate_dirs[1:5]) + [0.0]
+
+    (explosion_score_up, explosion_score_right,
+     explosion_score_down, explosion_score_left, explosion_score_stay) = explosion_scores
 
     self.shortest_way_opp, shortest_way_opp_up, shortest_way_opp_right, \
         shortest_way_opp_down, shortest_way_opp_left = coord_to_dir(self_x, self_y, dir_opp)
@@ -343,21 +346,22 @@ def state_to_features(self, game_state: dict) -> np.array:
                               shortest_way_safety_down, shortest_way_safety_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
-    test_vector = np.array([in_danger, bomb_avail, up, right, down, left,
-                            self.touching_crate, first_step, 0,
+    test_vector = np.array([in_danger, bomb_avail, self.touching_crate, explosion_score_stay,
                             shortest_way_coin_up, shortest_way_coin_right,
                             shortest_way_coin_down, shortest_way_coin_left,
                             shortest_way_safety_up, shortest_way_safety_right,
                             shortest_way_safety_down, shortest_way_safety_left,
                             shortest_way_opp_up, shortest_way_opp_right,
                             shortest_way_opp_down, shortest_way_opp_left,
-                            *explosion_scores])
+                            explosion_score_up, explosion_score_right,
+                            explosion_score_down, explosion_score_left])
 
     # For debugging
     self.logger.debug(f"\n"
                       f"Proposed way coin: {self.shortest_way_coin} \n"
                       f"Proposed way crate: {self.shortest_way_crate} \n"
                       f"Proposed way safety: {self.shortest_way_safety} \n"
-                      f"Proposed way opp: {self.shortest_way_opp}")
+                      f"Proposed way opp: {self.shortest_way_opp}"
+                      f"tile values: {up, right, down, left} \n")
 
     return test_vector

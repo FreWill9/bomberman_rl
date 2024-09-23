@@ -21,7 +21,7 @@ def in_bounds(array: np.ndarray, *indices: int) -> bool:
 
 
 def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(
-int, int)] | None:
+        int, int)] | None:
     """
     Find the closest reachable target from the start position using BFS.
 
@@ -118,7 +118,6 @@ def is_straight_dead_end(passable_spots: np.ndarray, x: int, y: int) -> bool:
     visited = np.zeros(passable_spots.shape)
 
     directions_set = set()
-
 
     while len(tile_queue) > 0:
         x, y = tile_queue.popleft()
@@ -516,7 +515,9 @@ def best_explosion_score(self, game_state: dict, coord: (int, int), direction: (
     while len(tile_queue) > 0:
         x, y, step = tile_queue.popleft()
 
-        best_score = max(best_score, explosion_score(self, game_state, x, y))
+        best_score = max(best_score, explosion_score(self, game_state, x, y) /
+                         (closest_target_dist(game_state, (coord[0] + direction[0], coord[1] + direction[1]),
+                                              [(x, y)]) + 1))
 
         if step >= max_step:
             continue
@@ -541,7 +542,6 @@ def best_explosion_score(self, game_state: dict, coord: (int, int), direction: (
 
 
 def explosion_score(self, game_state: dict, x: int, y: int) -> float:
-
     if (x, y) == (1, 1) or (x, y) == (1, 15) or (x, y) == (15, 1) or (x, y) == (15, 15):
         return 0
 
@@ -549,12 +549,13 @@ def explosion_score(self, game_state: dict, x: int, y: int) -> float:
     others = [xy for (n, s, b, xy) in game_state['others']]
     trap_tiles = self.trap_tiles
     bomb_for_trap_tiles = self.bomb_for_trap_tiles
+    (self_x, self_y) = game_state['self'][3]
 
     if (x, y) in trap_tiles:
         return 0
 
     if (x, y) in bomb_for_trap_tiles:
-        return 2
+        return 10
 
     crate_score = 0
     opp_score = 0
@@ -642,3 +643,65 @@ def find_traps(game_state: dict) -> tuple[list, list]:
                                 bomb_for_trap_tiles.add((x, y))
 
     return list(trap_tiles), list(bomb_for_trap_tiles)
+
+
+def transform_action(action: str):
+    """
+    Transform an action in all ways.
+    """
+    dirs = ['UP', 'RIGHT', 'DOWN', 'LEFT']
+    if action not in dirs:
+        return (action, ) * 7
+    action_indx = dirs.index(action)
+    dirs_t = transform_directional_feature(dirs)
+    return list(zip(*dirs_t))[action_indx]
+
+
+def transform_directional_feature(feature: list):
+    """
+    Transform a directional feature vector by mirroring and rotating it.
+    Returns a tuple of the features mirrored by x and y axes and rotated by 90, 180 and 270 degrees clockwise and
+     mirrored diagonally in both directions.
+    """
+    up, right, down, left = tuple(feature)
+    return ((up, left, down, right), (down, right, up, left),
+            (left, up, right, down), (down, left, up, right), (right, down, left, up),
+            (left, down, right, up), (right, up, left, down))
+
+
+def transform_feature_vector(feature_vector: np.ndarray):
+    """
+    Transform the feature vector by mirroring and rotating directional features.
+    Returns a tuple of the features mirrored by x and y axes and rotated by 90, 180 and 270 degrees clockwise and
+     mirrored diagonally in both directions.
+    """
+    (in_danger, bomb_avail, touching_crate, explosion_score_stay,
+     shortest_way_coin_up, shortest_way_coin_right,
+     shortest_way_coin_down, shortest_way_coin_left,
+     shortest_way_safety_up, shortest_way_safety_right,
+     shortest_way_safety_down, shortest_way_safety_left,
+     shortest_way_opp_up, shortest_way_opp_right,
+     shortest_way_opp_down, shortest_way_opp_left,
+     explosion_score_up, explosion_score_right,
+     explosion_score_down, explosion_score_left) = tuple(feature_vector)
+
+    coin_hints = [shortest_way_coin_up, shortest_way_coin_right, shortest_way_coin_down, shortest_way_coin_left]
+    safety_hints = [shortest_way_safety_up, shortest_way_safety_right, shortest_way_safety_down, shortest_way_safety_left]
+    opp_hints = [shortest_way_opp_up, shortest_way_opp_right, shortest_way_opp_down, shortest_way_opp_left]
+    explosion_hints = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left]
+
+    coin_hints_t = transform_directional_feature(coin_hints)
+    safety_hints_t = transform_directional_feature(safety_hints)
+    opp_hints_t = transform_directional_feature(opp_hints)
+    explosion_hints_t = transform_directional_feature(explosion_hints)
+
+    transformations = []
+    for i in range(len(coin_hints_t)):
+        transformations.append(np.array([in_danger, bomb_avail, touching_crate, explosion_score_stay,
+                                         *coin_hints_t[i],
+                                         *safety_hints_t[i],
+                                         *opp_hints_t[i],
+                                         *explosion_hints_t[i]
+                                         ]))
+
+    return tuple(transformations)

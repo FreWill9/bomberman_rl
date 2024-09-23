@@ -28,13 +28,13 @@ experiment_state = {'round': 1,
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
 
-                    'self': ('test', 2, False, (np.int64(3), np.int64(1))),
+                    'self': ('test', 2, False, (np.int64(5), np.int64(1))),
 
                     'others': [  # ("ooo", 2, True, (np.int64(3), np.int64(7))),
                                # ("oo", 2, True, (np.int64(15), np.int64(14))),
                                ],
 
-                    'bombs': [],
+                    'bombs': [((3, 1), 4)],
 
                     'coins': [],
 
@@ -263,8 +263,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
                         explosion_score_stay]
 
-    print(np.argmax([1, 2, 2, 1]))
-
     best_explosion = np.argmax(explosion_scores[:4])
     pot_game_state = copy.deepcopy(game_state)
     pot_game_state['bombs'].append(((self_x, self_y), 5))
@@ -276,9 +274,8 @@ def state_to_features(self, game_state: dict) -> np.array:
         self.shortest_way_crate = "BOMB"
     else:
         self.shortest_way_crate = ACTIONS[best_explosion]
-    print(explosion_scores)
+
     explosion_scores = [float(i == best_explosion) for i in range(5)]
-    print(explosion_scores)
 
     # Assign shortest way coordinates to features
     if closest_target_dist(game_state, (self_x, self_y)) < 15:
@@ -289,6 +286,9 @@ def state_to_features(self, game_state: dict) -> np.array:
         crate_dirs = coord_to_dir(self_x, self_y, dir_crate)
         self.shortest_way_crate = crate_dirs[0]
         explosion_scores = list(crate_dirs[1:5]) + [0.0]
+
+    (explosion_score_up, explosion_score_right,
+     explosion_score_down, explosion_score_left, explosion_score_stay) = explosion_scores
 
     self.shortest_way_opp, shortest_way_opp_up, shortest_way_opp_right, \
         shortest_way_opp_down, shortest_way_opp_left = coord_to_dir(self_x, self_y, dir_opp)
@@ -311,20 +311,22 @@ def state_to_features(self, game_state: dict) -> np.array:
                               shortest_way_safety_down, shortest_way_safety_left])
     feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
 
-    test_vector = np.array([in_danger, bomb_avail, up, right, down, left,
-                            self.touching_crate, first_step, 0,
+    test_vector = np.array([in_danger, bomb_avail, self.touching_crate, explosion_score_stay,
+                            up, right, down, left,
                             shortest_way_coin_up, shortest_way_coin_right,
                             shortest_way_coin_down, shortest_way_coin_left,
                             shortest_way_safety_up, shortest_way_safety_right,
                             shortest_way_safety_down, shortest_way_safety_left,
                             shortest_way_opp_up, shortest_way_opp_right,
                             shortest_way_opp_down, shortest_way_opp_left,
-                            *explosion_scores])
+                            explosion_score_up, explosion_score_right,
+                            explosion_score_down, explosion_score_left])
 
     # For debugging
     print(f"\n"
           f"{np.transpose(arena)} \n"
           f"self: {(self_y, self_x)} \n"
+          f"bomb: {(game_state['bombs'][0][0][1], game_state['bombs'][0][0][0])}\n"
           f"Proposed way coin: {self.shortest_way_coin} \n"
           f"Proposed way crate: {self.shortest_way_crate} \n"
           f"Proposed way safety: {self.shortest_way_safety} \n"
