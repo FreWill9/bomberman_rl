@@ -1,3 +1,4 @@
+import copy
 import os
 import pickle
 import random
@@ -10,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir,
+from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir, find_targets2,
                       find_traps, best_explosion_score, explosion_score, passable, all_direction_distances,
                       guaranteed_passable_tiles, DIRECTIONS, bomb_explosion_map, is_safe
                       )
@@ -61,7 +62,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(22, 1024, 1024, 6)
+        self.model = QNet(28, 1024, 1024, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -154,18 +155,17 @@ def state_to_features(self, game_state: dict) -> np.array:
     explosions = game_state['explosion_map']
     cols = range(1, field.shape[0] - 1)
     rows = range(1, field.shape[0] - 1)
+
     guaranteed_passable = guaranteed_passable_tiles(game_state)
+    distance_map = guaranteed_passable_tiles(game_state, ignore_enemies=True)
+    enemy_distances = guaranteed_passable_tiles(game_state, enemy_distances=True)
+
     empty_tiles = [(x, y) for x in cols for y in rows if (field[x, y] == 0)]
     bomb_map = build_bomb_map(game_state)
     safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
                   explosions[tile[0], tile[1]] == 0]
 
     self.logger.debug(guaranteed_passable.T)
-
-    # First step
-    first_step = 0.0
-    if game_state['step'] == 1:
-        first_step = 1.0
 
     # Score, Bomb_avail, Coordinates, Alone
     score_self = game_state['self'][1] / 100
@@ -193,26 +193,18 @@ def state_to_features(self, game_state: dict) -> np.array:
     else:
         suicidal_bomb = 0.0
 
-    # features.append(suicidal_bomb)
+    features.append(suicidal_bomb)
 
     # Distance to safety
     if in_danger == 1.0:
-        passable_field = np.logical_and(guaranteed_passable >= 0, guaranteed_passable < 5)
-        safety_distances = all_direction_distances(passable_field, (self_x, self_y), safe_tiles)
+        safety_distances = find_targets2(guaranteed_passable, (self_x, self_y), safe_tiles)
+        safety_distances = [d if d < 5 else -1 for d in safety_distances]
         if all(d == -1 for d in safety_distances):
-            # In case there is no guaranteed safe tile, we can still try to reach one.
-            passable_field = field == 0
-            for other in game_state['others']:
-                x, y = other[3]
-                passable_field[x, y] = False
-            for xy, t in game_state['bombs']:
-                x, y = xy
-                passable_field[x, y] = False
-            safety_distances = all_direction_distances(passable_field, (self_x, self_y), safe_tiles)
+            safety_distances = find_targets2(distance_map, (self_x, self_y), safe_tiles)
         # Normalize to -1 <= x <= 1
         safety_distances = [1 - (d / 32) if d >= 0 else -1 for d in safety_distances]
     else:
-        safety_distances = [0.0] * 4
+        safety_distances = [1.0] * 4
 
     # +4 features
     features.extend(safety_distances)
@@ -232,14 +224,7 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # Distance to coins
     coins = game_state['coins']
-    passable_field = guaranteed_passable >= 0
-    coin_distances = all_direction_distances(passable_field, (self_x, self_y), coins)
-    if all(d == -1 for d in coin_distances):
-        # In case there is no coin that is guaranteed to be reachable ignore opponent movement.
-        temp_field = np.zeros_like(field)
-        for x, y in safe_tiles:
-            temp_field[x, y] = 1
-        coin_distances = all_direction_distances(temp_field, (self_x, self_y), empty_tiles)
+    coin_distances = find_targets2(distance_map, (self_x, self_y), coins)
     # Normalize to -1 <= x <= 1
     coin_distances = [1 - (d / 32) if d >= 0 else -1 for d in coin_distances]
 
@@ -259,5 +244,45 @@ def state_to_features(self, game_state: dict) -> np.array:
     features.append(is_safe_stay)
 
     # TODO place good bombs
+    # find best explosion direction
+    max_steps = self.bomb_cooldown + 5
+    explosion_score_up = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, -1), max_steps)
+    explosion_score_right = best_explosion_score(game_state, bomb_map, (self_x, self_y), (1, 0), max_steps)
+    explosion_score_down = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, 1), max_steps)
+    explosion_score_left = best_explosion_score(game_state, bomb_map, (self_x, self_y), (-1, 0), max_steps)
+    explosion_score_stay = explosion_score(game_state, bomb_map, self_x, self_y)
+
+    explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
+                        explosion_score_stay]
+
+    best_explosion = np.argmax(explosion_scores[:4])
+    pot_game_state = copy.deepcopy(game_state)
+    pot_game_state['bombs'].append(((self_x, self_y), 5))
+    if explosion_scores[best_explosion] == 0:
+        best_explosion = -1
+        self.shortest_way_crate = "None"
+    elif explosion_scores[4] >= explosion_scores[best_explosion] and game_state['self'][2]:
+        best_explosion = 4
+        self.shortest_way_crate = "BOMB"
+    else:
+        self.shortest_way_crate = ACTIONS[best_explosion]
+
+    explosion_scores = [float(i == best_explosion) for i in range(5)]
+    if best_explosion == -1:
+        crates = []
+        for x in range(17):
+            for y in range(17):
+                if field[x, y] == 1:
+                    crates.append((x, y))
+
+        if len(crates) > 1:
+            crate_dists = find_targets2(distance_map, (self_x, self_y), crates)
+            closest_crate = np.argmin(crate_dists)
+            explosion_scores = [float(i == closest_crate) for i in range(5)]
+
+    (explosion_score_up, explosion_score_right,
+     explosion_score_down, explosion_score_left, explosion_score_stay) = explosion_scores
+
+    features.extend(explosion_scores)
 
     return features

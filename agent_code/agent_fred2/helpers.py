@@ -536,33 +536,41 @@ def transform_feature_vector(feature_vector: np.ndarray):
     Returns a tuple of the features mirrored by x and y axes and rotated by 90, 180 and 270 degrees clockwise and
      mirrored diagonally in both directions.
     """
-    (bomb_avail, self_x_normalized, self_y_normalized, in_danger,  # suicidal_bomb,
+    (bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
      safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left,
      tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
      tile_freq_stay,
      coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left,
      safety_up, safety_right, safety_down, safety_left,
-     safety_stay) = tuple(feature_vector)
+     safety_stay,
+     explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
+     explosion_score_stay,
+     ) = tuple(feature_vector)
 
     safety_distances = [safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left]
     tile_freq = [tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left]
     coin_distances = [coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left]
     safety = [safety_up, safety_right, safety_down, safety_left]
+    explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left]
 
     safety_distances_t = transform_directional_feature(safety_distances)
     tile_freq_t = transform_directional_feature(tile_freq)
     coin_distances_t = transform_directional_feature(coin_distances)
     safety_t = transform_directional_feature(safety)
+    explosion_scores_t = transform_directional_feature(explosion_scores)
 
     transformations = []
     for i in range(len(safety_distances_t)):
-        transformations.append(np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,  # suicidal_bomb,
+        transformations.append(np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger, suicidal_bomb,
                                          *safety_distances_t[i],
                                          *tile_freq_t[i],
                                          tile_freq_stay,
                                          *coin_distances_t[i],
                                          *safety_t[i],
-                                         safety_stay]))
+                                         safety_stay,
+                                         *explosion_scores_t[i],
+                                         explosion_score_stay,
+                                         ]))
 
     return tuple(transformations)
 
