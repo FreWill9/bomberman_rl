@@ -71,6 +71,21 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     """
     self.logger.debug(f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}')
 
+
+    (bomb_avail, self_x_normalized, self_y_normalized, in_danger,  # suicidal_bomb,
+     safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left,
+     tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
+     tile_freq_stay,
+     coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left,
+     safety_up, safety_right, safety_down, safety_left,
+     safety_stay) = tuple(self.features)
+
+    safety_distances = [safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left]
+    tile_freq = [tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left]
+    coin_distances = [coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left]
+    safety = [safety_up, safety_right, safety_down, safety_left]
+
+
     # Custom events to hand out rewards:
     # Agent did not wait
     if 'WAIT' not in events:
@@ -81,6 +96,29 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(LOOP)
     else:
         events.append(NO_LOOP)
+
+    action_index = int(encode_action(self_action))
+
+    # Reward for moving towards coins
+    if action_index < 4:
+        if safety[action_index] == 1:
+            events.append(SHORTEST_WAY_COIN)
+        else:
+            events.append(NOT_SHORTEST_WAY_COIN)
+
+    # Reward for staying safe
+    if in_danger:
+        if action_index < 4:
+            if safety[action_index] == 1:
+                events.append(SHORTEST_WAY_SAFETY)
+            else:
+                events.append(NOT_SHORTEST_WAY_SAFETY)
+        else:
+            if safety_stay == 1:
+                events.append(SHORTEST_WAY_SAFETY)
+            else:
+                events.append(NOT_SHORTEST_WAY_SAFETY)
+
 
     # Transpose shortest_ways to match gui
     # shortest_way_coin = self.shortest_way_coin
@@ -260,10 +298,10 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.INVALID_ACTION: -1,
         LOOP: -1,
         NO_LOOP: +1,
-        SHORTEST_WAY_COIN: +1,
+        SHORTEST_WAY_COIN: +2,
         NOT_SHORTEST_WAY_COIN: -1,
         SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1
+        NOT_SHORTEST_WAY_SAFETY: -5
     }
 
     # Stage 2
@@ -273,7 +311,7 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.INVALID_ACTION: -1,
         e.WAITED: -0,
         e.SURVIVED_ROUND: +0,
-        e.BOMB_DROPPED: +0,
+        e.BOMB_DROPPED: -4,
         e.CRATE_DESTROYED: +1,
         e.COIN_FOUND: +1,
         e.BOMB_EXPLODED: +0,
@@ -288,7 +326,7 @@ def reward_from_events(self, events: List[str], score) -> int:
         SHORTEST_WAY_CRATE: +2,
         NOT_SHORTEST_WAY_CRATE: -1,
         SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1
+        NOT_SHORTEST_WAY_SAFETY: -5
     }
 
     # Stage 3

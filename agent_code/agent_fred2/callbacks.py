@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir,
                       find_traps, best_explosion_score, explosion_score, passable, all_direction_distances,
-                      guaranteed_passable_tiles, DIRECTIONS, bomb_explosion_map
+                      guaranteed_passable_tiles, DIRECTIONS, bomb_explosion_map, is_safe
                       )
 from .model import QNet
 
@@ -61,7 +61,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(22, 2048, 4096, 6)
+        self.model = QNet(22, 1024, 1024, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -83,7 +83,7 @@ def act(self, game_state: dict) -> str:
     self.bomb_cooldown = max(0, self.bomb_cooldown - 1)
     self.features = state_to_features(self, game_state)
     self.logger.debug(self.features)
-    self.logger.debug(game_state['explosion_map'].T)
+    # self.logger.debug(game_state['explosion_map'].T)
     self.logger.debug(game_state['bombs'])
 
     self.step = game_state['step']
@@ -202,7 +202,8 @@ def state_to_features(self, game_state: dict) -> np.array:
         if all(d == -1 for d in safety_distances):
             # In case there is no guaranteed safe tile, we can still try to reach one.
             passable_field = field == 0
-            for x, y in game_state['others']:
+            for other in game_state['others']:
+                x, y = other[3]
                 passable_field[x, y] = False
             for xy, t in game_state['bombs']:
                 x, y = xy
@@ -246,379 +247,17 @@ def state_to_features(self, game_state: dict) -> np.array:
     features.extend(coin_distances)
 
     # Avoid dangerous tiles
-    is_safe = [0.0] * 4
+    safety = [0.0] * 4
     for i, direction in enumerate(DIRECTIONS):
         x2, y2 = self_x + direction[0], self_y + direction[1]
-        is_safe[i] = float(guaranteed_passable[x2, y2] == 1)
-    is_safe_stay = bomb_map[self_x, self_y] > 1
+        if int(guaranteed_passable[x2, y2]) == 1 and is_safe(game_state, x2, y2):
+            safety[i] = 1.0
+    is_safe_stay = float(is_safe(game_state, self_x, self_y))
 
     # +5 features
-    features.extend(is_safe)
+    features.extend(safety)
     features.append(is_safe_stay)
 
     # TODO place good bombs
 
     return features
-
-    # Shortest ways
-    # Initialize with zero:
-    shortest_way_coin_up = 0.0
-    shortest_way_coin_right = 0.0
-    shortest_way_coin_down = 0.0
-    shortest_way_coin_left = 0.0
-    self.shortest_way_coin = 'None'
-
-    shortest_way_crate_up = 0.0
-    shortest_way_crate_right = 0.0
-    shortest_way_crate_down = 0.0
-    shortest_way_crate_left = 0.0
-    self.shortest_way_crate = 'None'
-
-    shortest_way_safety_up = 0.0
-    shortest_way_safety_right = 0.0
-    shortest_way_safety_down = 0.0
-    shortest_way_safety_left = 0.0
-    self.shortest_way_safety = 'None'
-
-    shortest_way_trap_up = 0.0
-    shortest_way_trap_right = 0.0
-    shortest_way_trap_down = 0.0
-    shortest_way_trap_left = 0.0
-    self.shortest_way_trap = 'None'
-
-    coins = game_state['coins']
-
-    cols = range(1, field.shape[0] - 1)
-    rows = range(1, field.shape[0] - 1)
-
-    crates = [(x, y) for x in cols for y in rows if (field[x, y] == 1)]
-    empty_tiles = [(x, y) for x in cols for y in rows if (field[x, y] == 0)]
-    bomb_xys = [xy for (xy, t) in game_state['bombs']]
-
-    # Exclude targets that are currently occupied by bomb or explosion
-    free_coins = [coin for coin in coins if bomb_map[coin[0], coin[1]] == 100 and \
-                  explosions[coin[0], coin[1]] == 0]
-
-    free_crates = [crate for crate in crates if bomb_map[crate[0], crate[1]] == 100 and \
-                   explosions[crate[0], crate[1]] == 0]
-
-    escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and tile not in bomb_xys]
-
-    safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
-                  explosions[tile[0], tile[1]] == 0]
-
-    # Exclude ways that are occupied by walls, crates, danger, explosions and others
-    free_space = np.zeros((field.shape[0], field.shape[1]), dtype=bool)
-    for tile in safe_tiles:
-        free_space[tile[0], tile[1]] = True
-
-    escape_space = np.zeros((field.shape[0], field.shape[1]), dtype=bool)
-    for tile in escape_tiles:
-        escape_space[tile[0], tile[1]] = True
-
-    others = [xy for (n, s, b, xy) in game_state['others']]
-    for o in others:
-        free_space[o] = False
-        escape_space[o] = False
-
-    # Compute shortest way coordinates
-    dir_coin = look_for_targets(free_space, (self_x, self_y), free_coins)
-    dir_crate = look_for_targets(free_space, (self_x, self_y), free_crates)
-    dir_safety = look_for_targets(escape_space, (self_x, self_y), safe_tiles)
-
-    # find best explosion direction
-    max_steps = self.bomb_cooldown + 2
-    explosion_score_up = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, -1), max_steps)
-    explosion_score_right = best_explosion_score(game_state, bomb_map, (self_x, self_y), (1, 0), max_steps)
-    explosion_score_down = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, 1), max_steps)
-    explosion_score_left = best_explosion_score(game_state, bomb_map, (self_x, self_y), (-1, 0), max_steps)
-    explosion_score_stay = explosion_score(game_state, bomb_map, self_x, self_y)
-
-    explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
-                        explosion_score_stay]
-    best_explosion = np.argmax(explosion_scores)
-    if explosion_scores[best_explosion] == 0:
-        best_explosion = -1
-    explosion_scores = [float(i == best_explosion) for i in range(5)]
-    if best_explosion == -1:
-        self.shortest_way_crate = "None"
-    elif best_explosion == 4:
-        self.shortest_way_crate = "BOMB"
-    else:
-        self.shortest_way_crate = ACTIONS[best_explosion]
-
-    # Assign shortest way coordinates to features
-    self.shortest_way_coin, shortest_way_coin_up, shortest_way_coin_right, \
-        shortest_way_coin_down, shortest_way_coin_left = coord_to_dir(self_x, self_y, dir_coin)
-
-    if best_explosion == -1:
-        crate_dirs = coord_to_dir(self_x, self_y, dir_crate)
-        self.shortest_way_crate = crate_dirs[0]
-        explosion_scores = list(crate_dirs[1:5]) + [0.0]
-
-    if in_danger != 0.0:
-        self.shortest_way_safety, shortest_way_safety_up, shortest_way_safety_right, \
-            shortest_way_safety_down, shortest_way_safety_left = coord_to_dir(self_x, self_y, dir_safety)
-
-    # Find trap tiles
-    trap_tiles, bomb_for_trap_tiles = find_traps(game_state, empty_tiles, others)
-    dir_trap = look_for_targets(free_space, (self_x, self_y), bomb_for_trap_tiles)
-    self.shortest_way_trap, shortest_way_trap_up, shortest_way_trap_right, \
-        shortest_way_trap_down, shortest_way_trap_left = coord_to_dir(self_x, self_y, dir_trap)
-    self.bomb_for_trap = 0
-    if (self_x, self_y) in bomb_for_trap_tiles:
-        self.bomb_for_trap = 1
-
-    # features = np.array([in_danger, bomb_avail, up, right, down, left,
-    #                         self.touching_crate, first_step, self.bomb_for_trap,
-    #                         shortest_way_coin_up, shortest_way_coin_right,
-    #                         shortest_way_coin_down, shortest_way_coin_left,
-    #                         shortest_way_safety_up, shortest_way_safety_right,
-    #                         shortest_way_safety_down, shortest_way_safety_left,
-    #                         shortest_way_trap_up, shortest_way_trap_right,
-    #                         shortest_way_trap_down, shortest_way_trap_left,
-    #                         *explosion_scores])
-
-    # For debugging
-    self.logger.debug(f"\n"
-                      f"Proposed way coin: {self.shortest_way_coin} \n"
-                      f"Proposed way crate: {self.shortest_way_crate} \n"
-                      f"Proposed way safety: {self.shortest_way_safety} \n"
-                      f"Proposed way trap: {self.shortest_way_trap}")
-
-    return features
-
-
-def state_to_features2(self, game_state: dict) -> np.array:
-    """
-    *This is not a required function, but an idea to structure your code.*
-
-    Converts the game state to the input of your model, i.e.
-    a feature vector.
-
-    You can find out about the state of the game environment via game_state,
-    which is a dictionary. Consult 'get_state_for_agent' in environment.py to see
-    what it contains.
-
-    :param self: The same object that is passed to all of your callbacks.
-    :param game_state:  A dictionary describing the current game board.
-    :return: np.array
-    """
-    # This is the dict before the game begins and after it ends
-    if game_state is None:
-        return None
-
-    # Gather information about the game state. Normalize to -1 <= x <= 1.
-    # Arena 17 x 17 = 289
-    arena = game_state['field']
-
-    # First step
-    first_step = 0.0
-    if game_state['step'] == 1:
-        first_step = 1.0
-
-    # Score, Bomb_avail, Coordinates, Alone
-    score_self = game_state['self'][1] / 100
-    bomb_avail = int(game_state['self'][2])
-    self_x = game_state['self'][3][0]
-    self_y = game_state['self'][3][1]
-    self_x_normalized = self_x / 15
-    self_y_normalized = self_y / 15
-    try:
-        score_opp1 = game_state['others'][0][1] / 100
-        bomb_opp1 = int(game_state['others'][0][2])
-        x_opp1 = game_state['others'][0][3][0] / 15
-        y_opp1 = game_state['others'][0][3][1] / 15
-        alone = 0
-    except IndexError:
-        score_opp1 = 0
-        bomb_opp1 = 0
-        x_opp1 = -1  # 0 or -1
-        y_opp1 = -1
-        alone = 1
-    try:
-        score_opp2 = game_state['others'][1][1] / 100
-        bomb_opp2 = int(game_state['others'][1][2])
-        x_opp2 = game_state['others'][1][3][0] / 15
-        y_opp2 = game_state['others'][1][3][1] / 15
-    except IndexError:
-        score_opp2 = 0
-        bomb_opp2 = 0
-        x_opp2 = -1
-        y_opp2 = -1
-    try:
-        score_opp3 = game_state['others'][2][1] / 100
-        bomb_opp3 = int(game_state['others'][2][2])
-        x_opp3 = game_state['others'][2][3][0] / 15
-        y_opp3 = game_state['others'][2][3][1] / 15
-    except IndexError:
-        score_opp3 = 0
-        bomb_opp3 = 0
-        x_opp3 = -1
-        y_opp3 = -1
-
-    # In danger
-    bomb_map = build_bomb_map(game_state)
-    if bomb_map[self_x, self_y] == 100:
-        in_danger = 0.0
-        self.shortest_way_safety = "None"
-    else:
-        in_danger = 1.0
-
-    # Placement
-    all_scores = [score_self, score_opp1, score_opp2, score_opp3]
-    all_scores.sort(reverse=True)
-    self.placement = all_scores.index(score_self) + 1
-
-    # Up, Right, Down, Left, Touching_crate
-    self.touching_crate = 0
-    up = tile_value(game_state, (self_x, self_y - 1), self.coordinate_history)
-    right = tile_value(game_state, (self_x + 1, self_y), self.coordinate_history)
-    down = tile_value(game_state, (self_x, self_y + 1), self.coordinate_history)
-    left = tile_value(game_state, (self_x - 1, self_y), self.coordinate_history)
-    if arena[self_x - 1, self_y] == 1 or arena[self_x + 1, self_y] == 1 or \
-            arena[self_x, self_y - 1] == 1 or arena[self_x, self_y + 1] == 1:
-        self.touching_crate = 1
-
-    # Shortest ways
-    # Initialize with zero:
-    shortest_way_coin_up = 0.0
-    shortest_way_coin_right = 0.0
-    shortest_way_coin_down = 0.0
-    shortest_way_coin_left = 0.0
-    self.shortest_way_coin = 'None'
-
-    shortest_way_crate_up = 0.0
-    shortest_way_crate_right = 0.0
-    shortest_way_crate_down = 0.0
-    shortest_way_crate_left = 0.0
-    self.shortest_way_crate = 'None'
-
-    shortest_way_safety_up = 0.0
-    shortest_way_safety_right = 0.0
-    shortest_way_safety_down = 0.0
-    shortest_way_safety_left = 0.0
-    self.shortest_way_safety = 'None'
-
-    shortest_way_trap_up = 0.0
-    shortest_way_trap_right = 0.0
-    shortest_way_trap_down = 0.0
-    shortest_way_trap_left = 0.0
-    self.shortest_way_trap = 'None'
-
-    explosions = game_state['explosion_map']
-    coins = game_state['coins']
-
-    cols = range(1, arena.shape[0] - 1)
-    rows = range(1, arena.shape[0] - 1)
-
-    crates = [(x, y) for x in cols for y in rows if (arena[x, y] == 1)]
-    empty_tiles = [(x, y) for x in cols for y in rows if (arena[x, y] == 0)]
-    bomb_xys = [xy for (xy, t) in game_state['bombs']]
-
-    # Exclude targets that are currently occupied by bomb or explosion
-    free_coins = [coin for coin in coins if bomb_map[coin[0], coin[1]] == 100 and \
-                  explosions[coin[0], coin[1]] == 0]
-
-    free_crates = [crate for crate in crates if bomb_map[crate[0], crate[1]] == 100 and \
-                   explosions[crate[0], crate[1]] == 0]
-
-    escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and tile not in bomb_xys]
-
-    safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
-                  explosions[tile[0], tile[1]] == 0]
-
-    # Exclude ways that are occupied by walls, crates, danger, explosions and others
-    free_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
-    for tile in safe_tiles:
-        free_space[tile[0], tile[1]] = True
-
-    escape_space = np.zeros((arena.shape[0], arena.shape[1]), dtype=bool)
-    for tile in escape_tiles:
-        escape_space[tile[0], tile[1]] = True
-
-    others = [xy for (n, s, b, xy) in game_state['others']]
-    for o in others:
-        free_space[o] = False
-        escape_space[o] = False
-
-    # Compute shortest way coordinates
-    dir_coin = look_for_targets(free_space, (self_x, self_y), free_coins)
-    dir_crate = look_for_targets(free_space, (self_x, self_y), free_crates)
-    dir_safety = look_for_targets(escape_space, (self_x, self_y), safe_tiles)
-
-    # find best explosion direction
-    max_steps = self.bomb_cooldown + 2
-    explosion_score_up = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, -1), max_steps)
-    explosion_score_right = best_explosion_score(game_state, bomb_map, (self_x, self_y), (1, 0), max_steps)
-    explosion_score_down = best_explosion_score(game_state, bomb_map, (self_x, self_y), (0, 1), max_steps)
-    explosion_score_left = best_explosion_score(game_state, bomb_map, (self_x, self_y), (-1, 0), max_steps)
-    explosion_score_stay = explosion_score(game_state, bomb_map, self_x, self_y)
-
-    explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
-                        explosion_score_stay]
-    best_explosion = np.argmax(explosion_scores)
-    if explosion_scores[best_explosion] == 0:
-        best_explosion = -1
-    explosion_scores = [float(i == best_explosion) for i in range(5)]
-    if best_explosion == -1:
-        self.shortest_way_crate = "None"
-    elif best_explosion == 4:
-        self.shortest_way_crate = "BOMB"
-    else:
-        self.shortest_way_crate = ACTIONS[best_explosion]
-
-    # Assign shortest way coordinates to features
-    self.shortest_way_coin, shortest_way_coin_up, shortest_way_coin_right, \
-        shortest_way_coin_down, shortest_way_coin_left = coord_to_dir(self_x, self_y, dir_coin)
-
-    if best_explosion == -1:
-        crate_dirs = coord_to_dir(self_x, self_y, dir_crate)
-        self.shortest_way_crate = crate_dirs[0]
-        explosion_scores = list(crate_dirs[1:5]) + [0.0]
-
-    if in_danger != 0.0:
-        self.shortest_way_safety, shortest_way_safety_up, shortest_way_safety_right, \
-            shortest_way_safety_down, shortest_way_safety_left = coord_to_dir(self_x, self_y, dir_safety)
-
-    # Find trap tiles
-    trap_tiles, bomb_for_trap_tiles = find_traps(game_state, empty_tiles, others)
-    dir_trap = look_for_targets(free_space, (self_x, self_y), bomb_for_trap_tiles)
-    self.shortest_way_trap, shortest_way_trap_up, shortest_way_trap_right, \
-        shortest_way_trap_down, shortest_way_trap_left = coord_to_dir(self_x, self_y, dir_trap)
-    self.bomb_for_trap = 0
-    if (self_x, self_y) in bomb_for_trap_tiles:
-        self.bomb_for_trap = 1
-
-    # Build feature vector
-    flat_arena = arena.flatten()
-    rest_features = np.array([first_step, score_self, bomb_avail, self_x_normalized, self_y_normalized,
-                              score_opp1, score_opp2, score_opp3, bomb_opp1, bomb_opp2, bomb_opp3,
-                              x_opp1, x_opp2, x_opp3, y_opp1, y_opp2, y_opp3, alone,
-                              in_danger, self.placement / 4, up, right, down, left, self.touching_crate,
-                              shortest_way_coin_up, shortest_way_coin_right,
-                              shortest_way_coin_down, shortest_way_coin_left,
-                              # shortest_way_crate_up, shortest_way_crate_right,
-                              # shortest_way_crate_down, shortest_way_crate_left,
-                              shortest_way_safety_up, shortest_way_safety_right,
-                              shortest_way_safety_down, shortest_way_safety_left])
-    feature_vector = np.concatenate((flat_arena, rest_features), axis=0)
-
-    test_vector = np.array([in_danger, bomb_avail, up, right, down, left,
-                            self.touching_crate, first_step, self.bomb_for_trap,
-                            shortest_way_coin_up, shortest_way_coin_right,
-                            shortest_way_coin_down, shortest_way_coin_left,
-                            shortest_way_safety_up, shortest_way_safety_right,
-                            shortest_way_safety_down, shortest_way_safety_left,
-                            shortest_way_trap_up, shortest_way_trap_right,
-                            shortest_way_trap_down, shortest_way_trap_left,
-                            *explosion_scores])
-
-    # For debugging
-    self.logger.debug(f"\n"
-                      f"Proposed way coin: {self.shortest_way_coin} \n"
-                      f"Proposed way crate: {self.shortest_way_crate} \n"
-                      f"Proposed way safety: {self.shortest_way_safety} \n"
-                      f"Proposed way trap: {self.shortest_way_trap}")
-
-    return test_vector

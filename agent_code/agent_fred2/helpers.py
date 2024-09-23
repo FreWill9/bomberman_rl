@@ -10,6 +10,11 @@ DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 
 
 def bomb_explosion_map(game_state: dict, x: int, y: int) -> np.ndarray:
+    """
+    Create a map of the explosion range of a bomb.
+    Returns a 2D numpy array with the same shape as the game field, where 0 indicates no explosion and 1 indicates
+    an explosion.
+    """
     explosion_map = np.zeros_like(game_state['field'])
     explosion_map[x, y] = 1.0
     for direction in DIRECTIONS:
@@ -80,6 +85,86 @@ def all_direction_distances(passable_spots: np.ndarray, start: (int, int), targe
     return distances
 
 
+def is_safe(game_state: dict, x: int, y: int) -> bool:
+    """
+    Check if a tile is safe from bomb explosions if the agent moves there in the next step.
+    """
+    explosion_map = game_state['explosion_map']
+    bomb_map = build_bomb_map(game_state)
+    if explosion_map[x, y] > 0:
+        return False
+    if bomb_map[x, y] == 100:
+        return True
+
+    tile_queue = deque([(x, y, 1)])
+    visited = np.zeros(game_state['field'].shape)
+    visited[x, y] = 1
+    while len(tile_queue) > 0:
+        x, y, step = tile_queue.popleft()
+        if bomb_map[x, y] == 100:
+            return True
+        if bomb_map[x, y] < step:
+            continue
+
+        conns = connections(game_state['field'] == 0, x, y)
+        for x2, y2 in conns:
+            if visited[x2, y2] == 0:
+                tile_queue.append((x2, y2, step + 1))
+                visited[x2, y2] = 1
+
+    return False
+
+
+def find_targets2(distance_map: np.ndarray, start: (int, int), targets: list[(int, int)], max_step=32) -> \
+        list[int]:
+    """
+    Find the distance to the closest target in all directions from the start position using BFS.
+    Distance map should be a 2D numpy array with the same shape as the game field, where each cell contains the
+    amount of steps needed to reach the cell from the start position. If a cell is unreachable, the value should be
+    negative.
+    Returns a list of distances in the order [UP, RIGHT, DOWN, LEFT]. If no target is reachable in a direction,
+    the distance is set to -1.
+    """
+    if len(targets) == 0:
+        return [-1] * 4
+
+    targets = set(targets)
+
+    # Use BFS to find the closest reachable coin.
+    distances = [-1] * 4
+    tile_queue = deque([(start[0], start[1], 0, -1)])
+    visited = np.full(distance_map.shape + (4,), -1)
+    visited[start[0], start[1], :] = 1
+    while len(tile_queue) > 0:
+        x, y, step, search_dir = tile_queue.popleft()
+
+        if (x, y) in targets:
+            if step == 0:
+                distances = [0] * 4
+                break
+            distances[search_dir] = step
+            continue
+
+        if step >= max_step:
+            continue
+
+        for i, direction in enumerate(DIRECTIONS):
+            if step == 0:
+                search_dir = i
+
+            if 0 <= distances[i] <= step:
+                continue
+
+            x2, y2 = x + direction[0], y + direction[1]
+            dist = max(step + 1, distance_map[x2, y2].item())
+            if (in_bounds(distance_map, x2, y2) and distance_map[x2, y2] >= 0
+                    and (visited[x2, y2, search_dir] < 0 or visited[x2, y2, search_dir] > dist)):
+                tile_queue.append((x2, y2, dist, search_dir))
+                visited[x2, y2, search_dir] = dist
+
+    return distances
+
+
 def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: list[(int, int)]) -> list[(
         int, int)] | None:
     """
@@ -127,9 +212,19 @@ def find_closest_target(passable_spots: np.ndarray, start: (int, int), targets: 
     return path
 
 
-def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
+def guaranteed_passable_tiles(game_state: dict, ignore_enemies=False, enemy_distances=False, max_step=32) -> np.ndarray:
     """
     Find all tiles that are guaranteed to be reachable and the number of steps to reach them.
+    Args:
+        game_state: the game state.
+        ignore_enemies: whether to ignore enemy movement.
+        enemy_distances: if set to True all tiles reachable by self are marked with -1 and all tiles reachable by
+            enemies are marked with the number of steps the enemies need to reach them.
+        max_step: the maximum number of steps to search.
+    Returns:
+        a 2D numpy array with the same shape as the game field, where -1 indicates a tile reachable by enemies first
+         and 0 or greater indicates the number of steps needed to reach the tile by the agent.
+         -2 indicates an unreachable tile.
     """
     passable_tiles = np.full(game_state['field'].shape, -2)
     tile_queue = deque()
@@ -137,13 +232,14 @@ def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
     bombs = copy.deepcopy(game_state['bombs'])
     explosions = copy.deepcopy(game_state['explosion_map']) * 2
 
-    for player in game_state['others']:
-        tile_queue.append((player[3][0], player[3][1], False, 0))
-        passable_tiles[player[3][0], player[3][1]] = -1
+    if not ignore_enemies:
+        for player in game_state['others']:
+            tile_queue.append((player[3][0], player[3][1], False, 0))
+            passable_tiles[player[3][0], player[3][1]] = -1 if not enemy_distances else 0
 
     self_x, self_y = game_state['self'][3]
     tile_queue.append((self_x, self_y, True, 0))
-    passable_tiles[self_x, self_y] = 0
+    passable_tiles[self_x, self_y] = 0 if not enemy_distances else -1
 
     # Simulate steps of all agents until all reachable tiles are explored.
     prev_step = -1
@@ -163,19 +259,27 @@ def guaranteed_passable_tiles(game_state: dict, max_step=32) -> np.ndarray:
                 explosions = np.maximum(explosions, explosion)
             prev_step = step
 
+        explosion = False
         for direction in DIRECTIONS:
             x2, y2 = x + direction[0], y + direction[1]
-            if not (in_field(x2, y2, game_state)
-                    and game_state['field'][x2, y2] == 0
-                    and (x2, y2) not in [(int(xy[0]), int(xy[1])) for xy, t in bombs]
-                    and explosions[x2, y2] == 0
-                    and passable_tiles[x2, y2] == -2):
+            if (not in_field(x2, y2, game_state)
+                    or game_state['field'][x2, y2] != 0
+                    or passable_tiles[x2, y2] != -2
+                    or (x2, y2) in [(int(xy[0]), int(xy[1])) for xy, t in bombs]):
+                continue
+            if explosions[x2, y2] != 0:
+                explosion = True
                 continue
             tile_queue.append((x2, y2, is_self, step + 1))
-            if is_self:
+            if is_self and not enemy_distances:
                 passable_tiles[x2, y2] = step + 1
             else:
                 passable_tiles[x2, y2] = -1
+
+        if explosion:
+            # Wait for the explosions to clear.
+            if (x, y) not in [(int(xy[0]), int(xy[1])) for xy, t in bombs] and explosions[x, y] == 0:
+                tile_queue.append((x, y, is_self, step + 1))
     return passable_tiles
 
 
@@ -191,14 +295,28 @@ def connections(passable_spots: np.ndarray, x: int, y: int) -> list[(int, int)]:
     return free
 
 
-def is_straight_dead_end(passable_spots: np.ndarray, x: int, y: int) -> bool:
+def straight_dead_end(passable_spots: np.ndarray, x: int, y: int):
     """
     Check if a tile leads to a dead end in a straight line.
+    Returns start and end of the dead end or None if no dead end is found.
     """
     tile_queue = deque([(x, y)])
     visited = np.zeros(passable_spots.shape)
 
-    directions_set = set()
+    start = None
+    end = None
+
+    conns = connections(passable_spots, x, y)
+    directions = [(x2 - x, y2 - y) for x2, y2 in conns]
+
+    if len(directions) == 1:
+        end = (x, y)
+        directions.append((-directions[0][0], -directions[0][1]))
+    elif len(directions) > 2:
+        return None, None
+    elif not (directions[0][0] == -directions[1][0] and directions[0][1] == -directions[1][1]):
+        return None, None
+    directions_set = set(directions)
 
     while len(tile_queue) > 0:
         x, y = tile_queue.popleft()
@@ -206,23 +324,26 @@ def is_straight_dead_end(passable_spots: np.ndarray, x: int, y: int) -> bool:
         conns = connections(passable_spots, x, y)
         if len(conns) == 1:
             # Dead end reached
-            return True
+            end = (x, y)
+            continue
         if len(conns) > 2:
             # The path splits
+            start = (x, y)
             continue
 
         directions = [(x2 - x, y2 - y) for x2, y2 in conns]
-        if len(directions_set) == 0:
-            directions_set = set(directions)
-        elif directions_set != set(directions):
+        if directions_set != set(directions):
             # The path bends
+            start = (x, y)
             continue
 
         for x2, y2 in conns:
             if visited[x2, y2] == 0:
                 tile_queue.append((x2, y2))
 
-    return False
+    if end is None:
+        return None, None
+    return start, end
 
 
 def look_for_targets(free_space, start, targets, logger=None):
@@ -391,7 +512,7 @@ def transform_action(action: str):
     """
     dirs = ['UP', 'RIGHT', 'DOWN', 'LEFT']
     if action not in dirs:
-        return (action, ) * 7
+        return (action,) * 7
     action_indx = dirs.index(action)
     dirs_t = transform_directional_feature(dirs)
     return list(zip(*dirs_t))[action_indx]
@@ -415,33 +536,33 @@ def transform_feature_vector(feature_vector: np.ndarray):
     Returns a tuple of the features mirrored by x and y axes and rotated by 90, 180 and 270 degrees clockwise and
      mirrored diagonally in both directions.
     """
-    (bomb_avail, self_x_normalized, self_y_normalized, in_danger,# suicidal_bomb,
+    (bomb_avail, self_x_normalized, self_y_normalized, in_danger,  # suicidal_bomb,
      safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left,
      tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
      tile_freq_stay,
      coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left,
-     is_safe_up, is_safe_right, is_safe_down, is_safe_left,
-     is_safe_stay) = tuple(feature_vector)
+     safety_up, safety_right, safety_down, safety_left,
+     safety_stay) = tuple(feature_vector)
 
     safety_distances = [safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left]
     tile_freq = [tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left]
     coin_distances = [coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left]
-    is_safe = [is_safe_up, is_safe_right, is_safe_down, is_safe_left]
+    safety = [safety_up, safety_right, safety_down, safety_left]
 
     safety_distances_t = transform_directional_feature(safety_distances)
     tile_freq_t = transform_directional_feature(tile_freq)
     coin_distances_t = transform_directional_feature(coin_distances)
-    is_safe_t = transform_directional_feature(is_safe)
+    safety_t = transform_directional_feature(safety)
 
     transformations = []
     for i in range(len(safety_distances_t)):
-        transformations.append(np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,# suicidal_bomb,
+        transformations.append(np.array([bomb_avail, self_x_normalized, self_y_normalized, in_danger,  # suicidal_bomb,
                                          *safety_distances_t[i],
                                          *tile_freq_t[i],
                                          tile_freq_stay,
                                          *coin_distances_t[i],
-                                         *is_safe_t[i],
-                                         is_safe_stay]))
+                                         *safety_t[i],
+                                         safety_stay]))
 
     return tuple(transformations)
 
@@ -605,3 +726,18 @@ def find_traps(game_state: dict, empty_tiles, others: list[(int, int)]) -> (list
                         bomb_for_trap_tiles.add((x, y))
 
     return list(trap_tiles), list(bomb_for_trap_tiles)
+
+
+def is_trap(agent_distance_map: np.ndarray, enemy_distance_map: np.ndarray, x, y) -> bool:
+    start, end = straight_dead_end(agent_distance_map >= 0, x, y)
+    if start is None:
+        return False
+
+    conns = connections(agent_distance_map >= 0, start[0], start[1])
+    start_dist = agent_distance_map[start[0], start[1]]
+
+    for x2, y2 in conns:
+        if 0 <= enemy_distance_map[x2, y2] <= start_dist + 1:
+            return True
+
+    return False
