@@ -32,7 +32,7 @@ EPS_START = 0.5
 EPS_END = 0.05
 EPS_DECAY = 50
 
-FORCE_BOMBS = True
+FORCE_BOMBS = False
 
 
 def setup(self):
@@ -61,7 +61,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(22, 1024, 2048, 6)
+        self.model = QNet(22, 2048, 4096, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
@@ -155,7 +155,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     cols = range(1, field.shape[0] - 1)
     rows = range(1, field.shape[0] - 1)
     guaranteed_passable = guaranteed_passable_tiles(game_state)
-    passable_field = guaranteed_passable >= 0
     empty_tiles = [(x, y) for x in cols for y in rows if (field[x, y] == 0)]
     bomb_map = build_bomb_map(game_state)
     safe_tiles = [tile for tile in empty_tiles if bomb_map[tile[0], tile[1]] == 100 and \
@@ -198,6 +197,7 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # Distance to safety
     if in_danger == 1.0:
+        passable_field = np.logical_and(guaranteed_passable >= 0, guaranteed_passable < 5)
         safety_distances = all_direction_distances(passable_field, (self_x, self_y), safe_tiles)
         if all(d == -1 for d in safety_distances):
             # In case there is no guaranteed safe tile, we can still try to reach one.
@@ -231,6 +231,7 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # Distance to coins
     coins = game_state['coins']
+    passable_field = guaranteed_passable >= 0
     coin_distances = all_direction_distances(passable_field, (self_x, self_y), coins)
     if all(d == -1 for d in coin_distances):
         # In case there is no coin that is guaranteed to be reachable ignore opponent movement.
