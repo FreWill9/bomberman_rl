@@ -85,6 +85,36 @@ def all_direction_distances(passable_spots: np.ndarray, start: (int, int), targe
     return distances
 
 
+def is_safe(game_state: dict, x: int, y: int) -> bool:
+    """
+    Check if a tile is safe from bomb explosions if the agent moves there in the next step.
+    """
+    explosion_map = game_state['explosion_map']
+    bomb_map = build_bomb_map(game_state)
+    if explosion_map[x, y] > 0:
+        return False
+    if bomb_map[x, y] == 100:
+        return True
+
+    tile_queue = deque([(x, y, 1)])
+    visited = np.zeros(game_state['field'].shape)
+    visited[x, y] = 1
+    while len(tile_queue) > 0:
+        x, y, step = tile_queue.popleft()
+        if bomb_map[x, y] == 100:
+            return True
+        if bomb_map[x, y] < step:
+            continue
+
+        conns = connections(game_state['field'], x, y)
+        for x2, y2 in conns:
+            if visited[x2, y2] == 0:
+                tile_queue.append((x2, y2, step + 1))
+                visited[x2, y2] = 1
+
+    return False
+
+
 def find_targets2(distance_map: np.ndarray, start: (int, int), targets: list[(int, int)], max_step=32) -> \
         list[int]:
     """
@@ -287,7 +317,6 @@ def straight_dead_end(passable_spots: np.ndarray, x: int, y: int):
     elif not (directions[0][0] == -directions[1][0] and directions[0][1] == -directions[1][1]):
         return None, None
     directions_set = set(directions)
-
 
     while len(tile_queue) > 0:
         x, y = tile_queue.popleft()
@@ -512,18 +541,18 @@ def transform_feature_vector(feature_vector: np.ndarray):
      tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left,
      tile_freq_stay,
      coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left,
-     is_safe_up, is_safe_right, is_safe_down, is_safe_left,
-     is_safe_stay) = tuple(feature_vector)
+     safety_up, safety_right, safety_down, safety_left,
+     safety_stay) = tuple(feature_vector)
 
     safety_distances = [safety_distances_up, safety_distances_right, safety_distances_down, safety_distances_left]
     tile_freq = [tile_freq_up, tile_freq_right, tile_freq_down, tile_freq_left]
     coin_distances = [coin_distances_up, coin_distances_right, coin_distances_down, coin_distances_left]
-    is_safe = [is_safe_up, is_safe_right, is_safe_down, is_safe_left]
+    safety = [safety_up, safety_right, safety_down, safety_left]
 
     safety_distances_t = transform_directional_feature(safety_distances)
     tile_freq_t = transform_directional_feature(tile_freq)
     coin_distances_t = transform_directional_feature(coin_distances)
-    is_safe_t = transform_directional_feature(is_safe)
+    safety_t = transform_directional_feature(safety)
 
     transformations = []
     for i in range(len(safety_distances_t)):
@@ -532,8 +561,8 @@ def transform_feature_vector(feature_vector: np.ndarray):
                                          *tile_freq_t[i],
                                          tile_freq_stay,
                                          *coin_distances_t[i],
-                                         *is_safe_t[i],
-                                         is_safe_stay]))
+                                         *safety_t[i],
+                                         safety_stay]))
 
     return tuple(transformations)
 
@@ -710,3 +739,5 @@ def is_trap(agent_distance_map: np.ndarray, enemy_distance_map: np.ndarray, x, y
     for x2, y2 in conns:
         if 0 <= enemy_distance_map[x2, y2] <= start_dist + 1:
             return True
+
+    return False
