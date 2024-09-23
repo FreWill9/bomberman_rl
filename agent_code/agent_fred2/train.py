@@ -107,16 +107,17 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             events.append(NOT_SHORTEST_WAY_COIN)
 
     # Reward for staying safe
-    if action_index < 4:
-        if safety[action_index] >= max(safety):
-            events.append(SHORTEST_WAY_SAFETY)
+    if in_danger:
+        if action_index < 4:
+            if safety[action_index] == 1:
+                events.append(SHORTEST_WAY_SAFETY)
+            else:
+                events.append(NOT_SHORTEST_WAY_SAFETY)
         else:
-            events.append(NOT_SHORTEST_WAY_SAFETY)
-    else:
-        if safety_stay == 1:
-            events.append(SHORTEST_WAY_SAFETY)
-        else:
-            events.append(NOT_SHORTEST_WAY_SAFETY)
+            if safety_stay == 1:
+                events.append(SHORTEST_WAY_SAFETY)
+            else:
+                events.append(NOT_SHORTEST_WAY_SAFETY)
 
 
     # Transpose shortest_ways to match gui
@@ -297,10 +298,10 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.INVALID_ACTION: -1,
         LOOP: -1,
         NO_LOOP: +1,
-        SHORTEST_WAY_COIN: +1,
+        SHORTEST_WAY_COIN: +2,
         NOT_SHORTEST_WAY_COIN: -1,
         SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1
+        NOT_SHORTEST_WAY_SAFETY: -5
     }
 
     # Stage 2
@@ -310,7 +311,7 @@ def reward_from_events(self, events: List[str], score) -> int:
         e.INVALID_ACTION: -1,
         e.WAITED: -0,
         e.SURVIVED_ROUND: +0,
-        e.BOMB_DROPPED: +0,
+        e.BOMB_DROPPED: -4,
         e.CRATE_DESTROYED: +1,
         e.COIN_FOUND: +1,
         e.BOMB_EXPLODED: +0,
@@ -325,7 +326,7 @@ def reward_from_events(self, events: List[str], score) -> int:
         SHORTEST_WAY_CRATE: +2,
         NOT_SHORTEST_WAY_CRATE: -1,
         SHORTEST_WAY_SAFETY: +1,
-        NOT_SHORTEST_WAY_SAFETY: -1
+        NOT_SHORTEST_WAY_SAFETY: -5
     }
 
     # Stage 3

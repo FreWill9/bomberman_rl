@@ -32,7 +32,7 @@ EPS_START = 0.5
 EPS_END = 0.05
 EPS_DECAY = 50
 
-FORCE_BOMBS = True
+FORCE_BOMBS = False
 
 
 def setup(self):
@@ -61,7 +61,7 @@ def setup(self):
     if not os.path.isfile("my-saved-model.pt"):
         self.logger.info("Setting up model from scratch.")
 
-        self.model = QNet(22, 1024, 2048, 6)
+        self.model = QNet(22, 1024, 1024, 6)
     else:
         self.logger.info("Loading model from saved state.")
         with open("my-saved-model.pt", "rb") as file:
