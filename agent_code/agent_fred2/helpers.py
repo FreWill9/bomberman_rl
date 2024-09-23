@@ -699,17 +699,14 @@ def find_traps(game_state: dict, empty_tiles, others: list[(int, int)]) -> (list
     return list(trap_tiles), list(bomb_for_trap_tiles)
 
 
-def is_trap(game_state, guaranteed_passable):
-    x, y = game_state['self'][3]
-    start, end = straight_dead_end(guaranteed_passable >= 0, x, y)
+def is_trap(agent_distance_map: np.ndarray, enemy_distance_map: np.ndarray, x, y) -> bool:
+    start, end = straight_dead_end(agent_distance_map >= 0, x, y)
     if start is None:
         return False
 
-    conns = connections(guaranteed_passable >= 0, start[0], start[1])
-    start_dist = guaranteed_passable[start[0], start[1]]
-
-    enemy_distances = guaranteed_passable_tiles(game_state, ignore_enemies=False, enemy_distances=True)
+    conns = connections(agent_distance_map >= 0, start[0], start[1])
+    start_dist = agent_distance_map[start[0], start[1]]
 
     for x2, y2 in conns:
-        if 0 <= enemy_distances[x2, y2] <= start_dist + 1:
+        if 0 <= enemy_distance_map[x2, y2] <= start_dist + 1:
             return True
