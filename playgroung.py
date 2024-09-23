@@ -11,7 +11,7 @@ experiment_state = {'round': 1,
 
                     'field': np.array(
                         [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
-                         [-1, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0, -1],
+                         [-1, 0,  0, 0,  0, 0,  1, 0,  0, 0,  0, 0,  0, 0,  0, 0, -1],
                          [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 0, -1],
                          [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
@@ -21,22 +21,22 @@ experiment_state = {'round': 1,
                          [-1, 0, 0, 0, -1, 0, -1, 1, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, 0, 0, 0, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
-                         [-1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
+                         [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, 0, -1, 0, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1],
                          [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1],
                          [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]),
 
-                    'self': ('test', 2, False, (np.int64(1), np.int64(7))),
+                    'self': ('test', 2, False, (np.int64(3), np.int64(1))),
 
-                    'others': [("ooo", 2, True, (np.int64(3), np.int64(7))),
+                    'others': [  # ("ooo", 2, True, (np.int64(3), np.int64(7))),
                                # ("oo", 2, True, (np.int64(15), np.int64(14))),
                                ],
 
-                    'bombs': [((1, 7), 5)],
+                    'bombs': [],
 
-                    'coins': [(2, 1)],
+                    'coins': [],
 
                     'user_input': None,
 
@@ -263,6 +263,8 @@ def state_to_features(self, game_state: dict) -> np.array:
     explosion_scores = [explosion_score_up, explosion_score_right, explosion_score_down, explosion_score_left,
                         explosion_score_stay]
 
+    print(np.argmax([1, 2, 2, 1]))
+
     best_explosion = np.argmax(explosion_scores[:4])
     pot_game_state = copy.deepcopy(game_state)
     pot_game_state['bombs'].append(((self_x, self_y), 5))
@@ -274,8 +276,9 @@ def state_to_features(self, game_state: dict) -> np.array:
         self.shortest_way_crate = "BOMB"
     else:
         self.shortest_way_crate = ACTIONS[best_explosion]
-
+    print(explosion_scores)
     explosion_scores = [float(i == best_explosion) for i in range(5)]
+    print(explosion_scores)
 
     # Assign shortest way coordinates to features
     if closest_target_dist(game_state, (self_x, self_y)) < 15:
@@ -320,10 +323,12 @@ def state_to_features(self, game_state: dict) -> np.array:
 
     # For debugging
     print(f"\n"
+          f"{np.transpose(arena)} \n"
+          f"self: {(self_y, self_x)} \n"
           f"Proposed way coin: {self.shortest_way_coin} \n"
           f"Proposed way crate: {self.shortest_way_crate} \n"
           f"Proposed way safety: {self.shortest_way_safety} \n"
-          f"Proposed way opp: {self.shortest_way_opp}")
+          f"Proposed way opp: {self.shortest_way_opp} \n")
 
     return test_vector
 
