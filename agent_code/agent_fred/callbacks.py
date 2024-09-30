@@ -8,7 +8,7 @@ import copy
 import torch
 
 from .helpers import (look_for_targets, build_bomb_map, tile_value, coord_to_dir,
-                      find_traps, best_explosion_score, explosion_score, closest_target_dist, safe_tile_reachable)
+                      best_explosion_score, explosion_score, closest_target_dist, safe_tile_reachable)
 from .model import QNet
 
 # if GPU is to be used
@@ -26,7 +26,7 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 120
+EPS_DECAY = 150
 
 FORCE_BOMBS = False
 
@@ -50,7 +50,6 @@ def setup(self):
     self.shortest_way_coin = "None"
     self.shortest_way_crate = "None"
     self.shortest_way_safety = "None"
-    self.shortest_way_trap = "None"
     self.steps = 0
     self.touching_crate = 0
     self.bomb_cooldown = 0
@@ -159,13 +158,13 @@ def state_to_features(self, game_state: dict) -> np.array:
         bomb_opp1 = int(game_state['others'][0][2])
         x_opp1 = game_state['others'][0][3][0] / 15
         y_opp1 = game_state['others'][0][3][1] / 15
-        alone = 0
+        alone = False
     except IndexError:
         score_opp1 = 0
         bomb_opp1 = 0
         x_opp1 = -1  # 0 or -1
         y_opp1 = -1
-        alone = 1
+        alone = True
     try:
         score_opp2 = game_state['others'][1][1] / 100
         bomb_opp2 = int(game_state['others'][1][2])
@@ -246,19 +245,16 @@ def state_to_features(self, game_state: dict) -> np.array:
     empty_tiles = [(x, y) for x in cols for y in rows if (arena[x, y] == 0)]
     bomb_xys = [xy for (xy, t) in game_state['bombs']]
     others = [xy for (n, s, b, xy) in game_state['others']]
-    self.trap_tiles, self.bomb_for_trap_tiles = find_traps(game_state)
-    trap_tiles = self.trap_tiles
-    bomb_for_trap_tiles = self.bomb_for_trap_tiles
 
     # Exclude targets that are currently occupied by bomb or explosion
     free_coins = [coin for coin in coins if bomb_map[coin[0], coin[1]] == 100 and \
-                  explosions[coin[0], coin[1]] == 0 and (coin[0], coin[1]) not in trap_tiles]
+                  explosions[coin[0], coin[1]] == 0 and (coin[0], coin[1])]
 
     free_crates = [crate for crate in crates if bomb_map[crate[0], crate[1]] == 100 and \
-                   explosions[crate[0], crate[1]] == 0 and (crate[0], crate[1]) not in trap_tiles]
+                   explosions[crate[0], crate[1]] == 0 and (crate[0], crate[1])]
 
     free_opps = [opp for opp in others if bomb_map[opp[0], opp[1]] == 100 and \
-                 explosions[opp[0], opp[1]] == 0 and (opp[0], opp[1]) not in trap_tiles]
+                 explosions[opp[0], opp[1]] == 0 and (opp[0], opp[1])]
 
     escape_tiles = [tile for tile in empty_tiles if explosions[tile[0], tile[1]] == 0 and tile not in bomb_xys]
 
@@ -277,9 +273,6 @@ def state_to_features(self, game_state: dict) -> np.array:
     for o in others:
         free_space[o] = False
         escape_space[o] = False
-
-    for t in trap_tiles:
-        free_space[t] = False
 
     # Compute shortest way coordinates
     dir_coin = look_for_targets(free_space, (self_x, self_y), free_coins)
@@ -313,7 +306,7 @@ def state_to_features(self, game_state: dict) -> np.array:
     explosion_scores = [float(i == best_explosion) for i in range(5)]
 
     # Assign shortest way coordinates to features
-    if closest_target_dist(game_state, (self_x, self_y)) < 15:
+    if closest_target_dist(game_state, (self_x, self_y)) < 15 or alone:
         self.shortest_way_coin, shortest_way_coin_up, shortest_way_coin_right, \
             shortest_way_coin_down, shortest_way_coin_left = coord_to_dir(self_x, self_y, dir_coin)
 

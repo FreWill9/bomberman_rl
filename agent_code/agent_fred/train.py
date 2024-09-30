@@ -2,7 +2,6 @@ from collections import namedtuple, deque
 import pickle
 from typing import List
 import events as e
-import random
 import matplotlib.pyplot as plt
 import torch
 
@@ -87,7 +86,6 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     shortest_way_coin = self.shortest_way_coin
     shortest_way_crate = self.shortest_way_crate
     shortest_way_safety = self.shortest_way_safety
-    shortest_way_trap = self.shortest_way_trap
 
     # Taking the shortest path to the next coin
     if shortest_way_coin == "None" or shortest_way_safety != 'None':
@@ -112,14 +110,6 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         events.append(SHORTEST_WAY_SAFETY)
     else:
         events.append(NOT_SHORTEST_WAY_SAFETY)
-
-    # Taking the shortest path to trap an opp
-    if shortest_way_trap == "None" or shortest_way_safety != 'None':
-        pass
-    elif self_action == shortest_way_trap:
-        events.append(SHORTEST_WAY_TRAP)
-    else:
-        events.append(NOT_SHORTEST_WAY_TRAP)
 
     # Bomb on spawn point has high prob of no escape
     if len(self.coordinate_history) == 1 and self_action == 'BOMB':
@@ -333,7 +323,7 @@ def reward_from_events(self, events: List[str]) -> int:
 
     reward_sum = 0
     for event in events:
-        if event in game_rewards_stage_3:
-            reward_sum += game_rewards_stage_3[event]
+        if event in game_rewards_stage_2:
+            reward_sum += game_rewards_stage_2[event]
     self.logger.info(f"Awarded {reward_sum} for events {', '.join(events)}")
     return reward_sum

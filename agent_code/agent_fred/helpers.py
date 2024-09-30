@@ -516,7 +516,9 @@ def best_explosion_score(self, game_state: dict, coord: (int, int), direction: (
     while len(tile_queue) > 0:
         x, y, step = tile_queue.popleft()
 
-        best_score = max(best_score, explosion_score(self, game_state, x, y))
+        best_score = max(best_score, explosion_score(self, game_state, x, y) /
+                         (closest_target_dist(game_state, (coord[0] + direction[0], coord[1] + direction[1]),
+                                              [(x, y)]) + 1))
 
         if step >= max_step:
             continue
@@ -547,14 +549,6 @@ def explosion_score(self, game_state: dict, x: int, y: int) -> float:
 
     bomb_map = build_bomb_map(game_state)
     others = [xy for (n, s, b, xy) in game_state['others']]
-    trap_tiles = self.trap_tiles
-    bomb_for_trap_tiles = self.bomb_for_trap_tiles
-
-    if (x, y) in trap_tiles:
-        return 0
-
-    if (x, y) in bomb_for_trap_tiles:
-        return 2
 
     crate_score = 0
     opp_score = 0
